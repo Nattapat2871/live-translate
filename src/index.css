@@ -1,0 +1,96 @@
+/* Live Translate — author / ผู้สร้าง: nattapat2871 (https://nattapat2871.me) */
+@import "tailwindcss";
+@plugin './hero.ts';
+@source '../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}';
+@custom-variant dark (&:is(.dark *));
+@custom-variant th (&:lang(th));
+
+@theme {
+  --font-sign: "Barlow Condensed", "Anuphan Variable", system-ui, sans-serif;
+  --font-body: "Anuphan Variable", system-ui, sans-serif;
+  --color-board: #0d0f0e;
+  --color-flap: #161918;
+  --color-flap-hi: #1b1f1d;
+  --color-seam: #070808;
+  --color-sign: #f5c518;
+  --color-ink: #f2efe6;
+  --color-ink-dim: #a9ada7;
+}
+
+:root {
+  --fs: 30px;
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--color-board);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-sign);
+  color: var(--color-board);
+}
+
+* {
+  scrollbar-color: #343a37 transparent;
+  scrollbar-width: thin;
+}
+
+/* Each row is a charcoal flap; time, route and status sit on their own Solari tiles, split through the middle. */
+.flap-row {
+  background: var(--color-flap);
+}
+.flap-cell {
+  padding: 2px 6px;
+  border-radius: 2px;
+  background:
+    linear-gradient(transparent calc(50% - 0.5px), var(--color-seam) 0 calc(50% + 0.5px), transparent 0),
+    #232826;
+}
+.flap-row.is-newest {
+  background: var(--color-flap-hi);
+}
+
+/* Signature move: rows drop in like a flap, in hard steps (no easing). */
+@keyframes flap-in {
+  from {
+    transform: perspective(700px) rotateX(-88deg);
+  }
+  to {
+    transform: none;
+  }
+}
+.flap-in {
+  transform-origin: 50% 0;
+  animation: flap-in 180ms steps(3, jump-none) both;
+}
+@keyframes blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+.blink {
+  animation: blink 1.2s steps(1, jump-none) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flap-in,
+  .blink {
+    animation: none;
+  }
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Picture-in-picture overlay window */
+body.overlay-body {
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--color-board);
+}

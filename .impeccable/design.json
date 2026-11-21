@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-22T00:00:00Z",
+  "title": "Design System: Live Translate",
+  "extensions": {
+    "colorMeta": {
+      "sign": { "role": "primary", "displayName": "Signage Yellow", "canonical": "#f5c518", "tonalRamp": ["#3d3005", "#6b540a", "#9c7b0e", "#cfa312", "#f5c518", "#f8d553", "#fae38d", "#fdf2c6"] },
+      "board": { "role": "neutral", "displayName": "Board Black", "canonical": "#0d0f0e", "tonalRamp": ["#070808", "#0d0f0e", "#111312", "#161918", "#1b1f1d", "#232826", "#2f3432", "#59605c"] },
+      "bar": { "role": "neutral", "displayName": "Bar Charcoal", "canonical": "#111312", "tonalRamp": ["#070808", "#0d0f0e", "#111312", "#161918", "#1b1f1d", "#232826", "#2f3432", "#59605c"] },
+      "flap": { "role": "neutral", "displayName": "Flap Charcoal", "canonical": "#161918", "tonalRamp": ["#070808", "#0d0f0e", "#111312", "#161918", "#1b1f1d", "#232826", "#2f3432", "#59605c"] },
+      "flap-hi": { "role": "neutral", "displayName": "Newest Flap", "canonical": "#1b1f1d", "tonalRamp": ["#070808", "#0d0f0e", "#111312", "#161918", "#1b1f1d", "#232826", "#2f3432", "#59605c"] },
+      "tile": { "role": "neutral", "displayName": "Tile Charcoal", "canonical": "#232826", "tonalRamp": ["#070808", "#0d0f0e", "#111312", "#161918", "#1b1f1d", "#232826", "#2f3432", "#59605c"] },
+      "control": { "role": "neutral", "displayName": "Control Charcoal", "canonical": "#262a28", "tonalRamp": ["#1d2120", "#262a28", "#2f3432", "#343a37", "#59605c", "#8b918d", "#b4b8b5", "#dcdedc"] },
+      "divider": { "role": "neutral", "displayName": "Divider", "canonical": "#2a2f2d", "tonalRamp": ["#1d2120", "#262a28", "#2a2f2d", "#343a37", "#59605c", "#8b918d", "#b4b8b5", "#dcdedc"] },
+      "seam": { "role": "neutral", "displayName": "Seam Black", "canonical": "#070808", "tonalRamp": ["#020303", "#070808", "#0d0f0e", "#161918", "#232826", "#343a37", "#59605c", "#8b918d"] },
+      "ink": { "role": "neutral", "displayName": "Warm Ink", "canonical": "#f2efe6", "tonalRamp": ["#2a2924", "#4a4840", "#6e6b62", "#959187", "#b9b5aa", "#d6d2c7", "#f2efe6", "#faf8f2"] },
+      "ink-dim": { "role": "neutral", "displayName": "Dim Ink", "canonical": "#a9ada7", "tonalRamp": ["#262725", "#3b3e3a", "#555954", "#70746f", "#8b918d", "#a9ada7", "#c6c9c4", "#e3e5e2"] },
+      "danger": { "role": "semantic", "displayName": "Stop Red", "canonical": "#ff6b5e", "tonalRamp": ["#3b120f", "#6b1f19", "#a12e25", "#d63f33", "#ff6b5e", "#ff8f85", "#ffb4ad", "#ffd9d6"] }
+    },
+    "typographyMeta": {
+      "board-title": { "displayName": "Board Title", "purpose": "ARRIVALS heading only; yellow, uppercase." },
+      "wordmark": { "displayName": "Wordmark", "purpose": "Product name in the top bar." },
+      "subtitle": { "displayName": "Subtitle", "purpose": "Newest finished translation; size is the user's --fs (18-48px, default 30px)." },
+      "subtitle-older": { "displayName": "Older Subtitle", "purpose": "All other rows and the live row; 0.62 x --fs." },
+      "sign-label": { "displayName": "Sign Label", "purpose": "Tile text (time, route, status) and board status; uppercase, tabular numerals for time. Thai renders untracked." },
+      "column-head": { "displayName": "Column Head", "purpose": "Board column headers in yellow; Thai renders untracked." },
+      "body": { "displayName": "Body", "purpose": "Source-language line under each translation." },
+      "meta": { "displayName": "Meta", "purpose": "Tagline, select labels, footer privacy note." }
+    },
+    "shadows": [],
+    "motion": [
+      { "name": "flap-in", "value": "180ms steps(3, jump-none) both; perspective(700px) rotateX(-88deg) -> none; transform-origin 50% 0", "purpose": "Board rows dropping in, and a translation re-flipping when AI refinement replaces it." },
+      { "name": "blink", "value": "1.2s steps(1, jump-none) infinite; opacity 1 -> 0.35", "purpose": "Live LISTEN status and the listening indicator square." },
+      { "name": "reduced-motion", "value": "@media (prefers-reduced-motion: reduce) { animation: none }", "purpose": "Board holds completely still." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Flap Row",
+      "kind": "custom",
+      "refersTo": "flap-row",
+      "description": "One arrival: seamed time, route and status tiles around the translation and its dim source line.",
+      "html": "<div class=\"ds-flap-row\"><span class=\"ds-tile\">06:48:06</span><span class=\"ds-tile\">EN&rarr;TH</span><div><p class=\"ds-dst\">Their sniper is on the roof</p><p class=\"ds-src\">their sniper is on the roof</p></div><span class=\"ds-tile ds-tile-done\">Done</span></div>",
+      "css": ".ds-flap-row { display: grid; grid-template-columns: 4.75rem 3.25rem minmax(0,1fr) 8rem; align-items: baseline; column-gap: 20px; padding: 12px 20px; background: #161918; color: #f2efe6; font-family: 'Anuphan Variable', system-ui, sans-serif; } .ds-flap-row .ds-dst { margin: 0; font-size: 18.6px; line-height: 1.3; } .ds-flap-row .ds-src { margin: 4px 0 0; font-size: 15px; color: #a9ada7; } .ds-tile { justify-self: start; padding: 2px 6px; border-radius: 2px; background: linear-gradient(transparent calc(50% - 0.5px), #070808 0 calc(50% + 0.5px), transparent 0), #232826; font-family: 'Barlow Condensed', 'Anuphan Variable', system-ui, sans-serif; font-weight: 500; font-size: 15px; text-transform: uppercase; letter-spacing: 0.08em; font-variant-numeric: tabular-nums; color: #a9ada7; } .ds-tile-done { justify-self: end; }"
+    },
+    {
+      "name": "Newest Flap Row",
+      "kind": "custom",
+      "refersTo": "flap-row-newest",
+      "description": "The newest finished row: one tonal step lighter, full subtitle size, refined status in yellow, flips in on stepped motion.",
+      "html": "<div class=\"ds-flap-new\"><span class=\"ds-tile2\">06:48:06</span><span class=\"ds-tile2\">EN&rarr;TH</span><p class=\"ds-dst2\">I am reloading, cover me</p><span class=\"ds-tile2 ds-refined\">Refined</span></div>",
+      "css": ".ds-flap-new { display: grid; grid-template-columns: 4.75rem 3.25rem minmax(0,1fr) 8rem; align-items: baseline; column-gap: 20px; padding: 12px 20px; background: #1b1f1d; color: #f2efe6; font-family: 'Anuphan Variable', system-ui, sans-serif; transform-origin: 50% 0; animation: ds-flap 180ms steps(3, jump-none) both; } .ds-dst2 { margin: 0; font-size: 30px; line-height: 1.3; } .ds-tile2 { justify-self: start; padding: 2px 6px; border-radius: 2px; background: linear-gradient(transparent calc(50% - 0.5px), #070808 0 calc(50% + 0.5px), transparent 0), #232826; font-family: 'Barlow Condensed', system-ui, sans-serif; font-weight: 500; font-size: 15px; text-transform: uppercase; letter-spacing: 0.08em; color: #a9ada7; } .ds-refined { justify-self: end; color: #f5c518; } @keyframes ds-flap { from { transform: perspective(700px) rotateX(-88deg); } to { transform: none; } } @media (prefers-reduced-motion: reduce) { .ds-flap-new { animation: none; } }"
+    },
+    {
+      "name": "Board Header",
+      "kind": "custom",
+      "refersTo": "board-title",
+      "description": "Yellow ARRIVALS title on a 2px yellow rule with the blinking listening square, then yellow column heads.",
+      "html": "<div class=\"ds-board-head\"><h2>Arrivals</h2><p><span class=\"ds-dot\"></span>Listening</p></div><div class=\"ds-cols\"><span>Time</span><span>Route</span><span>Translation</span><span class=\"ds-end\">Status</span></div>",
+      "css": ".ds-board-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 0 20px 8px; border-bottom: 2px solid #f5c518; background: #0d0f0e; } .ds-board-head h2 { margin: 0; font-family: 'Barlow Condensed', system-ui, sans-serif; font-size: 28px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: #f5c518; } .ds-board-head p { margin: 0; display: flex; align-items: center; gap: 8px; font-family: 'Barlow Condensed', system-ui, sans-serif; font-weight: 500; font-size: 15px; text-transform: uppercase; letter-spacing: 0.08em; color: #f5c518; } .ds-dot { width: 8px; height: 8px; background: #f5c518; animation: ds-blink 1.2s steps(1, jump-none) infinite; } .ds-cols { display: grid; grid-template-columns: 4.75rem 3.25rem minmax(0,1fr) 8rem; column-gap: 20px; padding: 12px 20px 8px; background: #0d0f0e; font-family: 'Barlow Condensed', system-ui, sans-serif; font-weight: 500; font-size: 13px; text-transform: uppercase; letter-spacing: 0.14em; color: #f5c518; } .ds-end { justify-self: end; } @keyframes ds-blink { 50% { opacity: 0.35; } } @media (prefers-reduced-motion: reduce) { .ds-dot { animation: none; } }"
+    },
+    {
+      "name": "Start Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single primary action: yellow fill, board-black semibold text.",
+      "html": "<button class=\"ds-btn-start\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polygon points=\"6 3 20 12 6 21 6 3\"/></svg>Start</button>",
+      "css": ".ds-btn-start { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 128px; height: 40px; padding: 0 16px; border: 0; border-radius: 2px; background: #f5c518; color: #0d0f0e; font-family: 'Anuphan Variable', system-ui, sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 150ms; } .ds-btn-start:hover { opacity: 0.9; } .ds-btn-start:active { transform: scale(0.97); } .ds-btn-start:focus-visible { outline: 2px solid #f5c518; outline-offset: 2px; }"
+    },
+    {
+      "name": "Stop Button",
+      "kind": "button",
+      "refersTo": "button-stop",
+      "description": "The Start button while listening: red fill, square icon.",
+      "html": "<button class=\"ds-btn-stop\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/></svg>Stop</button>",
+      "css": ".ds-btn-stop { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 128px; height: 40px; padding: 0 16px; border: 0; border-radius: 2px; background: #ff6b5e; color: #0d0f0e; font-family: 'Anuphan Variable', system-ui, sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 150ms; } .ds-btn-stop:hover { opacity: 0.9; } .ds-btn-stop:focus-visible { outline: 2px solid #f5c518; outline-offset: 2px; }"
+    },
+    {
+      "name": "Bordered Button",
+      "kind": "button",
+      "refersTo": "button-bordered",
+      "description": "Secondary actions: overlay toggle, settings, clear, save.",
+      "html": "<button class=\"ds-btn-bordered\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M2 10V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6\"/><rect x=\"2\" y=\"14\" width=\"10\" height=\"7\" rx=\"1\"/></svg>Overlay</button>",
+      "css": ".ds-btn-bordered { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border: 2px solid #262a28; border-radius: 2px; background: transparent; color: #f2efe6; font-family: 'Anuphan Variable', system-ui, sans-serif; font-size: 14px; cursor: pointer; transition: background 150ms; } .ds-btn-bordered:hover { background: #1d2120; } .ds-btn-bordered:focus-visible { outline: 2px solid #f5c518; outline-offset: 2px; }"
+    },
+    {
+      "name": "Source Tabs",
+      "kind": "nav",
+      "refersTo": "tabs-source-selected",
+      "description": "Audio source switch; selected tab fills yellow.",
+      "html": "<div class=\"ds-tabs\" role=\"tablist\"><button class=\"ds-tab\" role=\"tab\" aria-selected=\"true\">System audio</button><button class=\"ds-tab\" role=\"tab\" aria-selected=\"false\">Mic</button></div>",
+      "css": ".ds-tabs { display: inline-flex; gap: 8px; padding: 4px; border-radius: 3px; background: #262a28; } .ds-tab { height: 32px; padding: 0 12px; border: 0; border-radius: 2px; background: transparent; color: #8b918d; font-family: 'Anuphan Variable', system-ui, sans-serif; font-size: 14px; font-weight: 500; cursor: pointer; } .ds-tab:hover { color: #f2efe6; } .ds-tab[aria-selected=true] { background: #f5c518; color: #0d0f0e; } .ds-tab:focus-visible { outline: 2px solid #f5c518; outline-offset: 2px; }"
+    },
+    {
+      "name": "Language Select",
+      "kind": "input",
+      "refersTo": "select",
+      "description": "From/to language select with outside-left dim label.",
+      "html": "<label class=\"ds-select\"><span>Friend speaks</span><select><option>English</option></select></label>",
+      "css": ".ds-select { display: inline-flex; align-items: center; gap: 8px; font-family: 'Anuphan Variable', system-ui, sans-serif; } .ds-select span { font-size: 13px; color: #a9ada7; white-space: nowrap; } .ds-select select { width: 160px; height: 32px; padding: 0 8px; border: 0; border-radius: 2px; background: #262a28; color: #f2efe6; font: inherit; font-size: 14px; } .ds-select select:hover { background: #2f3432; } .ds-select select:focus-visible { outline: 2px solid #f5c518; outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Arrivals Board",
+    "overview": "Translated speech arrives like flights on an airport split-flap board: one fixed place to glance, the newest row on top and largest. The whole screen is board black with charcoal flap rows stacked 3px apart; time, route and status sit on their own small tiles split through the middle by a hairline seam, the way a Solari module splits. Signage yellow is the board's only voice: the ARRIVALS title, its underline rule, column heads, the live LISTEN state and the primary action.\n\nDensity is that of a departures hall, not a dashboard: a single column of rows, generous subtitle type, everything else condensed and quiet. Motion is mechanical, never eased: rows drop in through three hard frames and the live indicator blinks on a square wave. The system rejects the category default of a neon gamer dashboard with chat bubbles.",
+    "keyCharacteristics": [
+      "Board black ground, charcoal flap rows, tonal steps instead of shadows.",
+      "Seamed tiles for time, route and status; the seam is the world's signature mark.",
+      "Condensed uppercase signage for Latin labels; a loopless Thai sans for every sentence.",
+      "Signage yellow reserved for board voice and the primary action.",
+      "Stepped motion that holds completely still under reduced motion."
+    ],
+    "rules": [
+      { "name": "The One Voice Rule", "body": "Yellow speaks only for the board (titles, heads, live state) and the single primary action. Rows, body text and secondary buttons stay in ink on charcoal.", "section": "colors" },
+      { "name": "The Tonal Step Rule", "body": "Surfaces separate by one charcoal step (`board` to `flap` to `flap-hi`), never by tint or hue.", "section": "colors" },
+      { "name": "The Untracked Thai Rule", "body": "Letter-spacing applies to Latin signage only. Every tracked style resets to `letter-spacing: normal` under `:lang(th)` (the `th:` variant), because tracking breaks Thai mark stacking. Thai labels in the signage face therefore render untracked and in Anuphan.", "section": "typography" },
+      { "name": "The Newest Wins Rule", "body": "Only the newest finished row gets full subtitle size; everything older drops to 0.62×.", "section": "typography" },
+      { "name": "The Flat Board Rule", "body": "Rows and tiles never take shadows, gradients or glows; the only gradient in the system is the seam line drawn through a tile.", "section": "elevation" }
+    ],
+    "dos": [
+      "**Do** put new board content in flap rows on the 3px-gap stack, newest on top.",
+      "**Do** use seamed tiles for short fixed-width data (time, route, status) and nothing longer.",
+      "**Do** use `steps()` timing for board motion (flip 180ms steps(3), blink 1.2s steps(1)) and drop all animation under `prefers-reduced-motion`.",
+      "**Do** set every tracked signage style with a `th:tracking-normal` reset.",
+      "**Do** use tabular numerals for times."
+    ],
+    "donts": [
+      "**Don't** letter-space Thai text, ever.",
+      "**Don't** use easing curves, springs or fades on board elements; the board moves mechanically.",
+      "**Don't** use yellow for body text, row backgrounds or secondary buttons.",
+      "**Don't** add shadows, glows or neon accents to rows or tiles.",
+      "**Don't** render translations as chat bubbles.",
+      "**Don't** round past 4px."
+    ]
+  }
+}
