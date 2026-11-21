@@ -1,0 +1,357 @@
+<!doctype html>
+<!-- Live Translate for Gamers — realtime voice → translated subtitles
+     Author / ผู้สร้าง: nattapat2871 (https://nattapat2871.me) -->
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="author" content="nattapat2871 (https://nattapat2871.me)">
+<title>Live Translate — แปลเสียงเพื่อนแบบเรียลไทม์</title>
+<style>
+  :root { color-scheme:dark; --bg:#0b0d12; --panel:#12161e; --line:#232a36; --fg:#e8edf4; --dim:#93a0b3; --acc:#3ddc97; --rec:#c93c37; --fs:22px; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.5 system-ui,"Noto Sans Thai",sans-serif; background:var(--bg); color:var(--fg); height:100vh; display:flex; flex-direction:column; }
+  header { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; padding:.75rem 1rem; background:var(--panel); border-bottom:1px solid var(--line); }
+  .brand { font-weight:700; margin-right:auto; }
+  .brand small { color:var(--dim); font-weight:400; margin-left:.3rem; }
+  select, button, input { font:inherit; color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:.4rem .65rem; }
+  button, summary { cursor:pointer; }
+  button:hover, summary:hover { border-color:var(--dim); }
+  :focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .seg label { padding:.4rem .75rem; cursor:pointer; }
+  .seg input { position:absolute; opacity:0; pointer-events:none; }
+  .seg label:has(input:checked) { background:var(--acc); color:#06120c; font-weight:600; }
+  .seg label:has(input:focus-visible) { outline:2px solid var(--acc); outline-offset:-2px; }
+  #toggle { background:var(--acc); border-color:var(--acc); color:#06120c; font-weight:700; min-width:7rem; }
+  #toggle.on { background:var(--rec); border-color:var(--rec); color:#fff; }
+  details { position:relative; }
+  summary { list-style:none; border:1px solid var(--line); border-radius:8px; padding:.4rem .65rem; }
+  summary::-webkit-details-marker { display:none; }
+  .panel { position:absolute; right:0; top:calc(100% + .4rem); z-index:5; width:min(370px,92vw); background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:1rem; display:grid; gap:.75rem; box-shadow:0 12px 32px #000a; }
+  .panel label { display:grid; gap:.25rem; color:var(--dim); font-size:.85rem; }
+  .panel label.check { display:flex; align-items:center; gap:.5rem; color:var(--fg); }
+  .row { display:flex; gap:.5rem; }
+  .hint { color:var(--dim); font-size:.8rem; margin:0; }
+  #status { width:100%; color:var(--dim); font-size:.85rem; min-height:1.2em; }
+  #status.err { color:#ff9b93; }
+  #meter { height:3px; background:var(--line); }
+  #meter i { display:block; height:100%; width:0; background:var(--acc); }
+  main { flex:1; overflow-y:auto; padding:1rem; display:flex; flex-direction:column; gap:.6rem; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:.7rem 1rem; max-width:920px; width:100%; margin:0 auto; }
+  .card .dst { font-size:var(--fs); line-height:1.35; }
+  .card .src { color:var(--dim); font-size:.9rem; margin-top:.2rem; }
+  .card .meta { float:right; margin-left:.6rem; color:var(--dim); font-size:.75rem; }
+  .card.live { border-style:dashed; }
+  .card.live .dst { color:var(--dim); }
+  body.no-src .src { display:none; }
+  .empty { color:var(--dim); max-width:560px; margin:auto; }
+  .empty b { color:var(--fg); }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">🎧 Live Translate<small>แปลเสียงเพื่อนต่างชาติ</small></div>
+  <div class="seg" role="radiogroup" aria-label="แหล่งเสียง">
+    <label><input type="radio" name="input" value="system" checked> 🖥️ เสียงในคอม</label>
+    <label><input type="radio" name="input" value="mic"> 🎤 ไมค์</label>
+  </div>
+  <label>เพื่อนพูด <select id="src"></select></label>
+  <label>แปลเป็น <select id="dst"></select></label>
+  <button id="toggle">▶ เริ่ม</button>
+  <button id="pip" title="เปิดหน้าต่างซับลอยทับเกม">📌 ลอยทับเกม</button>
+  <details>
+    <summary>⚙️ ตั้งค่า</summary>
+    <div class="panel">
+      <label>Claude API key — แปลแบบเข้าใจบริบท/ศัพท์เกม (เว้นว่าง = Google ฟรี)
+        <input id="key" type="password" placeholder="sk-ant-..." autocomplete="off" spellcheck="false"></label>
+      <label>โมเดล AI
+        <select id="model">
+          <option value="claude-opus-5-5">Claude Opus 5.5 — แม่นสุด</option>
+          <option value="claude-sonnet-5-5">Claude Sonnet 5.5 — สมดุล</option>
+          <option value="claude-haiku-5-5">Claude Haiku 5.5 — เร็วและถูกสุด</option>
+        </select></label>
+      <p class="hint">key เก็บใน localStorage ของเบราว์เซอร์นี้ และส่งตรงไป api.anthropic.com เท่านั้น — อย่าใส่บนเครื่องสาธารณะ</p>
+      <label>ขนาดซับ <input id="fs" type="range" min="16" max="44"></label>
+      <label class="check"><input id="showSrc" type="checkbox"> แสดงข้อความต้นฉบับ</label>
+      <div class="row"><button id="clear">ล้าง</button><button id="save">บันทึก .txt</button></div>
+    </div>
+  </details>
+  <div id="status" role="status"></div>
+</header>
+<div id="meter" aria-hidden="true"><i></i></div>
+<main id="feed" aria-live="polite">
+  <div class="empty" id="empty">
+    <p><b>ฟังเพื่อนใน Discord / เกม</b></p>
+    <ol>
+      <li>เลือก <b>🖥️ เสียงในคอม</b> และภาษาที่เพื่อนพูด</li>
+      <li>กด <b>▶ เริ่ม</b> → เลือก <b>ทั้งหน้าจอ</b> (หรือแท็บ Discord บนเว็บ)</li>
+      <li>ติ๊ก <b>แชร์เสียงของระบบ</b> แล้วกดแชร์</li>
+      <li>กด <b>📌 ลอยทับเกม</b> ให้ซับลอยบนเกม (เกมต้องเป็น Borderless / Windowed)</li>
+    </ol>
+  </div>
+  <div class="card live" id="live" hidden><div class="dst"></div><div class="src"></div></div>
+</main>
+<script>
+// Author: nattapat2871 (https://nattapat2871.me)
+// [speech code, display name, translate code]
+const LANGS = [
+  ['en-US','English','en'], ['th-TH','ไทย','th'], ['ja-JP','日本語','ja'], ['ko-KR','한국어','ko'],
+  ['zh-CN','中文 (简体)','zh-CN'], ['zh-TW','中文 (繁體)','zh-TW'], ['vi-VN','Tiếng Việt','vi'],
+  ['id-ID','Bahasa Indonesia','id'], ['ms-MY','Bahasa Melayu','ms'], ['fil-PH','Filipino','tl'],
+  ['lo-LA','ລາວ','lo'], ['my-MM','မြန်မာ','my'], ['km-KH','ខ្មែរ','km'], ['hi-IN','हिन्दी','hi'],
+  ['ru-RU','Русский','ru'], ['uk-UA','Українська','uk'], ['pl-PL','Polski','pl'], ['tr-TR','Türkçe','tr'],
+  ['de-DE','Deutsch','de'], ['fr-FR','Français','fr'], ['es-ES','Español','es'], ['pt-BR','Português (BR)','pt'],
+  ['it-IT','Italiano','it'], ['ar-SA','العربية','ar'],
+];
+const $ = id => document.getElementById(id);
+const src = $('src'), dst = $('dst'), btn = $('toggle'), feed = $('feed'), liveEl = $('live');
+const lang = code => LANGS.find(l => l[0] === code || l[2] === code);
+const mode = () => document.querySelector('input[name=input]:checked').value;
+const say = (msg, err) => { $('status').textContent = msg; $('status').className = err ? 'err' : ''; };
+
+// ---------- settings (persisted) ----------
+for (const [code, name, t] of LANGS) { src.add(new Option(name, code)); dst.add(new Option(name, t)); }
+src.value = localStorage.src || 'en-US';
+dst.value = localStorage.dst || 'th';
+$('key').value = localStorage.key || '';
+$('model').value = localStorage.model || 'claude-opus-5-5';
+$('fs').value = localStorage.fs || 22;
+$('showSrc').checked = localStorage.showSrc !== '0';
+document.querySelector(`input[name=input][value=${localStorage.input || 'system'}]`).checked = true;
+function applyView() {
+  document.documentElement.style.setProperty('--fs', $('fs').value + 'px');
+  document.body.classList.toggle('no-src', !$('showSrc').checked);
+  renderOverlay();
+}
+src.onchange = () => { localStorage.src = src.value; rec?.stop(); }; // onend restarts with the new language
+dst.onchange = () => localStorage.dst = dst.value;
+$('key').onchange = () => localStorage.key = $('key').value.trim();
+$('model').onchange = () => localStorage.model = $('model').value;
+$('fs').oninput = () => { localStorage.fs = $('fs').value; applyView(); };
+$('showSrc').onchange = () => { localStorage.showSrc = $('showSrc').checked ? '1' : '0'; applyView(); };
+document.querySelectorAll('input[name=input]').forEach(r => r.onchange = () => localStorage.input = mode());
+
+// ---------- translation ----------
+// Free Google endpoint (CORS *). ponytail: unofficial, may rate-limit; Claude key path covers quality.
+async function google(text, sl, tl) {
+  const r = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return (await r.json())[0].map(s => s[0]).join('');
+}
+// Translate with the previous line attached so pronouns/topic carry over, then keep only the new line.
+async function quickTranslate(text, prev) {
+  const sl = lang(src.value)[2], tl = dst.value;
+  if (prev) {
+    const out = (await google(prev + '\n' + text, sl, tl)).split('\n');
+    if (out.length === 2) return out[1].trim();
+  }
+  return google(text, sl, tl);
+}
+
+let Anthropic, client, clientKey;
+async function claudeTranslate(text, history) {
+  const key = $('key').value.trim();
+  if (!key) return null;
+  if (clientKey !== key) {
+    Anthropic ??= (await import('https://esm.sh/@anthropic-ai/sdk')).default;
+    // Bring-your-own key, used only from this user's own browser; the SDK refuses browsers without this flag.
+    client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true });
+    clientKey = key;
+  }
+  const model = $('model').value, from = lang(src.value)[1], to = lang(dst.value)[1];
+  const context = history.filter(h => h.dst !== '…').map(h => `${h.src}  =>  ${h.dst}`).join('\n') || '(none)';
+  const params = {
+    model,
+    max_tokens: 2048,
+    output_config: { effort: 'low' },
+    system: `You translate live voice chat between gamers, from ${from} into ${to}.
+The input is speech-recognition text of a friend talking in a game or Discord call. It can contain recognition mistakes, missing punctuation, gaming slang, callouts, and player or map names.
+Translate only the line inside <new>. Use the lines inside <context> only to resolve pronouns, slang, the current topic, and likely misheard words; never translate them again.
+Write it the way a ${to}-speaking gamer would say it in voice chat: short and natural. Keep game terms, item names, and player names that players normally leave untranslated.
+Reply with the translation only.`,
+    messages: [{ role: 'user', content: `<context>\n${context}\n</context>\n<new>${text}</new>` }],
+  };
+  // Haiku 5.5 has no server-side fallback; Opus/Sonnet 5.5 retry on another model if a policy refusal happens.
+  const res = model.startsWith('claude-haiku')
+    ? await client.messages.create(params)
+    : await client.beta.messages.create({ ...params, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' });
+  if (res.stop_reason === 'refusal') return null; // keep the Google translation
+  return res.content.filter(b => b.type === 'text').map(b => b.text).join('').trim() || null;
+}
+function claudeError(e) {
+  if (Anthropic && e instanceof Anthropic.AuthenticationError) say('⚠ Claude API key ไม่ถูกต้อง — ใช้คำแปล Google แทน', true);
+  else if (Anthropic && e instanceof Anthropic.RateLimitError) say('⚠ Claude ติด rate limit — ใช้คำแปล Google ชั่วคราว', true);
+  else if (Anthropic && e instanceof Anthropic.APIConnectionError) say('⚠ ต่อ Claude ไม่ได้ — ใช้คำแปล Google ชั่วคราว', true);
+  else say('⚠ Claude: ' + (e?.message || e), true);
+}
+
+// ---------- subtitle feed ----------
+const items = [];
+const live = { src: '', dst: '' };
+let liveSeq = 0, liveTimer;
+const nearBottom = () => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 120;
+
+function render(it) {
+  const stick = nearBottom();
+  if (!it.el) {
+    it.el = document.createElement('div');
+    it.el.className = 'card';
+    it.el.innerHTML = '<span class="meta"></span><div class="dst"></div><div class="src"></div>';
+    feed.insertBefore(it.el, liveEl);
+    $('empty')?.remove();
+  }
+  it.el.querySelector('.dst').textContent = it.dst;
+  it.el.querySelector('.src').textContent = it.src;
+  it.el.querySelector('.meta').textContent = (it.ai ? '✨ ' : '') + it.time;
+  if (stick) feed.scrollTop = feed.scrollHeight;
+  renderOverlay();
+}
+function renderLive() {
+  const stick = nearBottom();
+  liveEl.hidden = !live.src;
+  liveEl.querySelector('.dst').textContent = live.dst || '…';
+  liveEl.querySelector('.src').textContent = live.src;
+  if (stick) feed.scrollTop = feed.scrollHeight;
+  renderOverlay();
+}
+function addFinal(text) {
+  const history = items.slice(-6);
+  const it = { src: text, dst: '…', ai: false, time: new Date().toLocaleTimeString('th-TH') };
+  items.push(it);
+  render(it);
+  quickTranslate(text, history.at(-1)?.src)
+    .then(t => { if (!it.ai) { it.dst = t; render(it); } })
+    .catch(e => { if (!it.ai) { it.dst = '⚠ แปลไม่ได้ (' + e.message + ')'; render(it); } });
+  claudeTranslate(text, history)
+    .then(t => { if (t) { it.dst = t; it.ai = true; render(it); } })
+    .catch(claudeError);
+}
+function setLive(text) {
+  live.src = text;
+  if (!text) live.dst = '';
+  renderLive();
+  clearTimeout(liveTimer);
+  if (!text) return;
+  const seq = ++liveSeq; // debounce, and drop responses that arrive after newer speech
+  liveTimer = setTimeout(() => quickTranslate(text, items.at(-1)?.src)
+    .then(t => { if (seq === liveSeq) { live.dst = t; renderLive(); } }).catch(() => {}), 300);
+}
+function onResult(e) {
+  let interim = '';
+  for (let i = e.resultIndex; i < e.results.length; i++) {
+    const r = e.results[i], text = r[0].transcript.trim();
+    if (!text) continue;
+    if (r.isFinal) { liveSeq++; addFinal(text); } else interim += text + ' ';
+  }
+  setLive(interim.trim());
+}
+
+// ---------- floating overlay (Document Picture-in-Picture: stays on top of other windows) ----------
+let pipWin;
+$('pip').onclick = async () => {
+  if (pipWin) return pipWin.close();
+  if (!('documentPictureInPicture' in window)) return say('⚠ เบราว์เซอร์นี้เปิดหน้าต่างลอยไม่ได้ — ใช้ Chrome / Edge รุ่นใหม่', true);
+  try { pipWin = await documentPictureInPicture.requestWindow({ width: 560, height: 220 }); }
+  catch (e) { return say('⚠ เปิดหน้าต่างลอยไม่ได้: ' + e.message, true); }
+  pipWin.document.head.innerHTML = `<title>ซับแปล</title><style>
+    body { margin:0; height:100vh; box-sizing:border-box; overflow:hidden; padding:.5rem .9rem; display:flex; flex-direction:column; justify-content:flex-end;
+           background:#0b0d12; color:#e8edf4; font:var(--fs)/1.35 system-ui,"Noto Sans Thai",sans-serif; }
+    .l { margin-top:.45rem; } .s { color:#93a0b3; font-size:.55em; } .live .d { color:#93a0b3; }
+    body.no-src .s { display:none; }</style>`;
+  pipWin.addEventListener('pagehide', () => { pipWin = null; $('pip').textContent = '📌 ลอยทับเกม'; });
+  $('pip').textContent = '📌 ปิดหน้าต่างลอย';
+  renderOverlay();
+};
+function renderOverlay() {
+  if (!pipWin) return;
+  const doc = pipWin.document;
+  doc.documentElement.style.setProperty('--fs', $('fs').value + 'px');
+  doc.body.classList.toggle('no-src', !$('showSrc').checked);
+  const rows = items.slice(-3).map(i => ({ dst: i.dst, src: i.src }));
+  if (live.src) rows.push({ dst: live.dst || '…', src: live.src, live: true });
+  doc.body.replaceChildren(...rows.slice(-3).map(r => {
+    const d = doc.createElement('div');
+    d.className = r.live ? 'l live' : 'l';
+    d.append(Object.assign(doc.createElement('div'), { className: 'd', textContent: r.dst }),
+             Object.assign(doc.createElement('div'), { className: 's', textContent: r.src }));
+    return d;
+  }));
+}
+
+// ---------- audio capture + speech recognition ----------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!SR) { say('⚠ เบราว์เซอร์นี้ถอดเสียงไม่ได้ — ใช้ Chrome หรือ Edge', true); btn.disabled = true; }
+let rec, stream, track, listening = false, stopMeter;
+
+async function start() {
+  try {
+    stream = mode() === 'system'
+      ? await navigator.mediaDevices.getDisplayMedia({
+          video: true, // Chrome only offers system/tab audio as part of a screen share
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+          systemAudio: 'include', selfBrowserSurface: 'exclude' })
+      : await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    return say(e.name === 'NotAllowedError' ? '⚠ ยกเลิกหรือไม่ได้รับอนุญาต — กด ▶ เริ่ม แล้วอนุญาต/แชร์อีกครั้ง' : '⚠ ' + e.message, true);
+  }
+  stream.getVideoTracks().forEach(t => t.stop()); // only the audio is needed
+  track = stream.getAudioTracks()[0];
+  if (!track) { stop(); return say('⚠ ไม่มีเสียงมาด้วย — ตอนแชร์ต้องติ๊ก "แชร์เสียงของระบบ" หรือ "แชร์เสียงแท็บ"', true); }
+  track.onended = () => { stop(); say('หยุดแชร์เสียงแล้ว'); };
+  listening = true;
+  btn.textContent = '■ หยุด'; btn.classList.add('on');
+  say(mode() === 'system' ? '🔴 กำลังฟังเสียงในคอม…' : '🔴 กำลังฟังไมค์…');
+  startMeter(stream);
+  listen();
+}
+function listen() {
+  rec = new SR();
+  rec.lang = src.value; rec.continuous = true; rec.interimResults = true;
+  rec.onresult = onResult;
+  rec.onerror = e => {
+    if (e.error === 'no-speech' || e.error === 'aborted') return; // normal pauses; onend restarts
+    stop();
+    say({ 'not-allowed': '⚠ ไม่ได้รับอนุญาตใช้เสียง', network: '⚠ เชื่อมต่อบริการถอดเสียงไม่ได้ (ต้องใช้ Chrome/Edge และอินเทอร์เน็ต)',
+          'language-not-supported': '⚠ ไม่รองรับภาษานี้' }[e.error] || '⚠ ' + e.error, true);
+  };
+  rec.onend = () => { if (listening) listen(); }; // Chrome ends a session after silence; keep going
+  rec.start(track); // Chrome accepts a MediaStreamTrack, so screen/system audio works the same as the mic
+}
+function stop() {
+  listening = false;
+  rec?.abort();
+  stream?.getTracks().forEach(t => t.stop());
+  stopMeter?.();
+  btn.textContent = '▶ เริ่ม'; btn.classList.remove('on');
+  setLive('');
+}
+function startMeter(s) {
+  const ac = new AudioContext(), an = ac.createAnalyser(), buf = new Uint8Array(512), bar = document.querySelector('#meter i');
+  an.fftSize = 512;
+  ac.createMediaStreamSource(s).connect(an);
+  let raf;
+  const tick = () => {
+    an.getByteTimeDomainData(buf);
+    let peak = 0;
+    for (const v of buf) peak = Math.max(peak, Math.abs(v - 128));
+    bar.style.width = Math.min(100, peak / 128 * 250) + '%';
+    raf = requestAnimationFrame(tick);
+  };
+  tick();
+  stopMeter = () => { cancelAnimationFrame(raf); ac.close(); bar.style.width = 0; };
+}
+btn.onclick = () => listening ? (stop(), say('')) : start();
+
+// ---------- tools ----------
+$('clear').onclick = () => { for (const i of items) i.el.remove(); items.length = 0; renderOverlay(); };
+$('save').onclick = () => {
+  const txt = items.map(i => `[${i.time}] ${i.src}\n→ ${i.dst}`).join('\n\n');
+  Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([txt], { type: 'text/plain' })), download: 'translate-log.txt',
+  }).click();
+};
+applyView();
+</script>
+</body>
+</html>
