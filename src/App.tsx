@@ -2,6 +2,8 @@
 // Author / ผู้สร้าง: nattapat2871 (https://nattapat2871.me)
 import {
   addToast,
+  Autocomplete,
+  AutocompleteItem,
   Button,
   Drawer,
   DrawerBody,
@@ -19,17 +21,31 @@ import {
   Tab,
   Tabs,
 } from '@heroui/react'
-import { ArrowRight, Download, Eye, EyeOff, Mic, MonitorSpeaker, PictureInPicture2, Play, Settings2, Square, Trash2 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { ArrowLeftRight, Copy, Download, Eye, EyeOff, HeartHandshake, Mic, MonitorSpeaker, PictureInPicture2, Play, Settings2, Square, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Board, Meter, useOverlay } from './Board'
 import { Pipeline, type Live, type Row } from './pipeline'
-import { LANGS, STRINGS, langByCode, langBySpeech, type Lang, type UiLang } from './text'
+import { connectObs, obsSourceUrl, type ObsLink } from './obs'
+import { SOURCES, STRINGS, TARGETS, langByCode, langBySpeech, langNames, speechFor, targetFor, type Lang, type Strings, type UiLang } from './text'
 import { chromeAIPrepare, chromeAIRefiner, chromeAIStatus, claudeRefiner, isClaudeKey, quickTranslate, TranslateError, type ChromeAIState } from './translate'
 import { useSpeech, type Source } from './useSpeech'
 
 type Engine = 'google' | 'chrome' | 'claude'
 const KEY_STORE = 'lt.anthropicKey'
+const REPO_URL = 'https://github.com/Nattapat2871/live-translate'
+// NamPayments hosted donate page (https://nampayments.nattapat2871.me/s/<slug>/<page>): the bill is made and checked there.
+// Empty = no donate button until the store page exists.
+const DONATE_URL = ''
+type ObsState = 'off' | 'connecting' | 'on' | 'auth' | 'error'
+
+function GithubMark() {
+  return (
+    <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden>
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+    </svg>
+  )
+}
 const SECTION = 'font-sign text-[15px] uppercase tracking-[0.12em] th:tracking-normal text-sign'
 
 type Area = 'localStorage' | 'sessionStorage'
@@ -65,27 +81,38 @@ function usePersisted<T>(name: string, initial: T) {
   return [value, setValue] as const
 }
 
-function LangSelect(p: { label: string; value: string; onChange(v: string): void; keyOf(l: Lang): string }) {
+function LangSelect(p: { label: string; value: string; onChange(v: string): void; langs: Lang[]; ui: UiLang; t: Strings }) {
+  const items = useMemo(
+    () =>
+      p.langs.map(l => {
+        const n = langNames(l, p.ui)
+        return { key: l.key, ...n, text: n.native === n.local ? n.local : `${n.local} · ${n.native}` } // shown in the field and searched
+      }),
+    [p.langs, p.ui],
+  )
   return (
-    <Select
+    <Autocomplete
       size="sm"
       radius="sm"
       label={p.label}
-      labelPlacement="outside-left"
-      disallowEmptySelection
-      selectedKeys={[p.value]}
-      onSelectionChange={keys => {
-        const k = keys === 'all' ? undefined : [...keys][0]
-        if (k !== undefined) p.onChange(String(k))
+      labelPlacement="outside"
+      placeholder={p.t.langSearch}
+      listboxProps={{ emptyContent: p.t.langNone }}
+      defaultItems={items}
+      selectedKey={p.value}
+      onSelectionChange={k => {
+        if (k !== null) p.onChange(String(k))
       }}
-      classNames={{ base: 'items-center w-auto', mainWrapper: 'w-40', label: 'text-[13px] text-ink-dim whitespace-nowrap max-sm:w-20' }}
+      isClearable={false}
+      classNames={{ base: 'w-48', selectorButton: 'text-ink-dim' }}
+      inputProps={{ classNames: { label: 'text-[12px] text-ink-dim' } }}
     >
-      {LANGS.map(l => (
-        <SelectItem key={p.keyOf(l)} textValue={l.name}>
-          {l.name}
-        </SelectItem>
-      ))}
-    </Select>
+      {item => (
+        <AutocompleteItem key={item.key} textValue={item.text} description={item.native !== item.local ? item.native : undefined}>
+          {item.local}
+        </AutocompleteItem>
+      )}
+    </Autocomplete>
   )
 }
 
@@ -108,11 +135,22 @@ export default function App() {
   const [chromeState, setChromeState] = useState<ChromeAIState>('unsupported')
   const [chromeReady, setChromeReady] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
+  const [obs, setObs] = usePersisted('obs', { on: false, port: 4455, password: '', lines: 2, fs: 44 })
+  const [obsState, setObsState] = useState<ObsState>('off')
+  const obsLink = useRef<ObsLink | null>(null)
 
   const fromLang = langBySpeech(from)
   const toLang = langByCode(to)
   const route = `${fromLang.short}→${toLang.short}`
+  const fromName = langNames(fromLang, 'en').local // English names read best in model prompts
+  const toName = langNames(toLang, 'en').local
   const keyOk = isClaudeKey(key)
+  const swapTo = speechFor(toLang.code) // undefined when the target language cannot be listened to
+  const swap = () => {
+    if (!swapTo) return
+    setTo(targetFor(fromLang).key)
+    setFrom(swapTo.key)
+  }
 
   // Latest values for callbacks that outlive a render.
   const latest = useRef({ t, sl: fromLang.code, tl: toLang.code })
@@ -157,7 +195,7 @@ export default function App() {
 
   // Which context-aware engine refines the quick translation.
   useEffect(() => {
-    if (engine === 'claude' && keyOk) pipeline.setRefine(claudeRefiner(key.trim(), model, fromLang.name, toLang.name))
+    if (engine === 'claude' && keyOk) pipeline.setRefine(claudeRefiner(key.trim(), model, fromName, toName))
     else if (engine === 'chrome' && chromeReady) pipeline.setRefine(chromeAIRefiner(fromLang.code, toLang.code))
     else pipeline.setRefine(null)
   }, [pipeline, engine, key, keyOk, model, fromLang, toLang, chromeReady])
@@ -178,7 +216,7 @@ export default function App() {
       setChromeState(state)
       if (state !== 'available') return
       try {
-        await chromeAIPrepare(fromLang.code, toLang.code, fromLang.name, toLang.name)
+        await chromeAIPrepare(fromLang.code, toLang.code, fromName, toName)
         if (!cancelled) setChromeReady(true)
       } catch {
         if (!cancelled) setChromeState('unavailable')
@@ -192,7 +230,7 @@ export default function App() {
   const prepareChrome = async () => {
     setProgress(0)
     try {
-      await chromeAIPrepare(fromLang.code, toLang.code, fromLang.name, toLang.name, setProgress)
+      await chromeAIPrepare(fromLang.code, toLang.code, fromName, toName, setProgress)
       setChromeState('available')
       setChromeReady(true)
     } catch {
@@ -209,6 +247,59 @@ export default function App() {
     onError: e => notify(latest.current.t.err[e]),
     onEnded: () => notify(latest.current.t.stopped, 'default'),
   })
+
+  // OBS: one obs-websocket link while switched on; reconnects every 3 s and waits 0.5 s after a typed change.
+  useEffect(() => {
+    if (!obs.on) return setObsState('off')
+    let stopped = false
+    let link: ObsLink | null = null
+    const open = () => {
+      setObsState('connecting')
+      connectObs(obs.port, obs.password, {
+        onClose: () => {
+          obsLink.current = null
+          if (stopped) return
+          setObsState('error')
+          timer = window.setTimeout(open, 3000)
+        },
+      }).then(
+        l => {
+          if (stopped) return l.close()
+          link = obsLink.current = l
+          setObsState('on')
+        },
+        (e: Error) => {
+          if (stopped) return
+          setObsState(e.message === 'auth' ? 'auth' : 'error')
+          if (e.message !== 'auth') timer = window.setTimeout(open, 3000)
+        },
+      )
+    }
+    let timer = window.setTimeout(open, 500)
+    return () => {
+      stopped = true
+      clearTimeout(timer)
+      link?.close()
+      obsLink.current = null
+    }
+  }, [obs.on, obs.port, obs.password])
+
+  useEffect(() => {
+    if (obsState !== 'on') return
+    const lines = rows.slice(-6).map(r => ({ id: String(r.id), dst: r.dst, src: r.src, live: false }))
+    if (live.src) lines.push({ id: 'live', dst: live.dst, src: live.src, live: true })
+    obsLink.current?.send({ app: 'live-translate', lines })
+  }, [rows, live, obsState])
+
+  const copyObsUrl = async () => {
+    const url = obsSourceUrl(obs.port, obs.password, obs.lines, showSrc, obs.fs)
+    try {
+      await navigator.clipboard.writeText(url)
+      notify(t.obsCopied, 'default')
+    } catch {
+      window.prompt(t.obsCopy, url) // clipboard blocked: let the visitor copy it by hand
+    }
+  }
 
   const overlay = useOverlay(() => notify(t.err.pip))
   useEffect(() => {
@@ -230,12 +321,22 @@ export default function App() {
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-20 border-b border-[#232826] bg-[#111312]">
-        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-4 gap-y-3 px-5 py-3">
+        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-3 gap-y-3 px-5 py-3">
           <div className="mr-auto flex items-center gap-3">
             <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className="size-8" />
             <div>
               <h1 className="font-sign text-[22px] font-semibold uppercase leading-none tracking-[0.1em]">Live Translate</h1>
               <p className="mt-1 text-[13px] text-ink-dim">{t.tagline}</p>
+            </div>
+            <div className="ml-2 flex items-center gap-1">
+              {DONATE_URL && (
+                <Button as={Link} href={DONATE_URL} isExternal size="sm" variant="flat" color="primary" radius="sm" title={t.donateHint} startContent={<HeartHandshake size={16} aria-hidden />}>
+                  {t.donate}
+                </Button>
+              )}
+              <Button as={Link} href={REPO_URL} isExternal isIconOnly size="sm" variant="light" radius="sm" aria-label={t.github} title={t.github} className="text-ink-dim data-[hover=true]:text-ink">
+                <GithubMark />
+              </Button>
             </div>
           </div>
 
@@ -252,10 +353,22 @@ export default function App() {
             <Tab key="mic" title={<span className="flex items-center gap-2"><Mic size={16} aria-hidden />{t.sourceMic}</span>} />
           </Tabs>
 
-          <div className="grid grid-cols-[auto_auto_auto] items-center gap-2 max-sm:grid-cols-1">
-            <LangSelect label={t.from} value={from} onChange={setFrom} keyOf={l => l.speech} />
-            <ArrowRight size={18} className="text-ink-dim max-sm:hidden" aria-hidden />
-            <LangSelect label={t.to} value={to} onChange={setTo} keyOf={l => l.code} />
+          <div className="flex items-end gap-1">
+            <LangSelect label={t.from} value={fromLang.key} onChange={setFrom} langs={SOURCES} ui={ui} t={t} />
+            <Button
+              isIconOnly
+              size="sm"
+              variant="light"
+              radius="sm"
+              aria-label={swapTo ? t.swap : t.swapNo}
+              title={swapTo ? t.swap : t.swapNo}
+              isDisabled={!swapTo}
+              onPress={swap}
+              className="mb-0.5 text-ink-dim data-[hover=true]:text-sign"
+            >
+              <ArrowLeftRight size={18} aria-hidden />
+            </Button>
+            <LangSelect label={t.to} value={toLang.key} onChange={setTo} langs={TARGETS} ui={ui} t={t} />
           </div>
 
           <Button
@@ -395,6 +508,72 @@ export default function App() {
                   {t.save}
                 </Button>
               </div>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <h3 className={SECTION}>{t.obs}</h3>
+              <ol className="list-decimal space-y-1 ps-5 text-sm leading-relaxed text-ink-dim">
+                {t.obsSteps.map(line => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ol>
+              <div className="flex gap-3">
+                <Input
+                  size="sm"
+                  radius="sm"
+                  type="number"
+                  label={t.obsPort}
+                  labelPlacement="outside"
+                  className="w-28 shrink-0"
+                  value={String(obs.port)}
+                  onValueChange={v => setObs(o => ({ ...o, port: Math.min(65535, Math.max(1, Number(v) || 4455)) }))}
+                />
+                <Input
+                  size="sm"
+                  radius="sm"
+                  type="password"
+                  name="lt-obs-password"
+                  autoComplete="new-password"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  label={t.obsPassword}
+                  labelPlacement="outside"
+                  placeholder=" "
+                  value={obs.password}
+                  onValueChange={v => setObs(o => ({ ...o, password: v }))}
+                />
+              </div>
+              <Switch size="sm" isSelected={obs.on} onValueChange={on => setObs(o => ({ ...o, on }))}>
+                <span className="text-sm">{t.obsEnable}</span>
+              </Switch>
+              <p role="status" className={`text-sm ${obsState === 'on' ? 'text-sign' : obsState === 'auth' || obsState === 'error' ? 'text-[#ff8a80]' : 'text-ink-dim'}`}>
+                {t.obsState[obsState]}
+              </p>
+              <Slider
+                label={t.obsLines}
+                size="sm"
+                color="primary"
+                minValue={1}
+                maxValue={4}
+                step={1}
+                value={obs.lines}
+                onChange={v => setObs(o => ({ ...o, lines: Array.isArray(v) ? v[0] : v }))}
+              />
+              <Slider
+                label={t.obsSize}
+                size="sm"
+                color="primary"
+                minValue={24}
+                maxValue={80}
+                step={2}
+                value={obs.fs}
+                getValue={v => `${v}px`}
+                onChange={v => setObs(o => ({ ...o, fs: Array.isArray(v) ? v[0] : v }))}
+              />
+              <Button size="sm" variant="bordered" radius="sm" className="self-start" startContent={<Copy size={14} aria-hidden />} onPress={() => void copyObsUrl()}>
+                {t.obsCopy}
+              </Button>
+              <p className="text-[13px] leading-snug text-ink-dim">{t.obsNote}</p>
             </div>
 
             <p className="text-sm leading-relaxed text-ink-dim">{t.limits}</p>

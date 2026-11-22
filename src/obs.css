@@ -1,0 +1,59 @@
+/* Live Translate — OBS overlay. Author / ผู้สร้าง: nattapat2871 (https://nattapat2871.me) */
+/* Transparent page; a heavy outline so subtitles read on any game footage. */
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+}
+html {
+  --fs: 44px;
+}
+body {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  font-family: "Anuphan Variable", system-ui, sans-serif;
+  color: #f2efe6;
+}
+#lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+  padding: 0 4% 3%;
+  text-align: center;
+}
+.line p {
+  margin: 0;
+  text-wrap: balance;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 0.14em #070808;
+  text-shadow: 0 0.06em 0.18em rgb(0 0 0 / 0.6);
+}
+.dst {
+  font-size: calc(var(--fs) * 0.7);
+  font-weight: 600;
+  line-height: 1.25;
+  opacity: 0.8;
+}
+.newest .dst {
+  font-size: var(--fs);
+  opacity: 1;
+}
+.live .dst {
+  color: #f5c518;
+}
+.src {
+  font-size: calc(var(--fs) * 0.45);
+  line-height: 1.3;
+  color: #d6d8d2;
+}
+#status {
+  align-self: flex-start;
+  margin: 12px;
+  padding: 6px 10px;
+  background: #0d0f0e;
+  color: #f5c518;
+  font: 600 18px system-ui, sans-serif;
+}

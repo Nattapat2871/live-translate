@@ -6,4 +6,5 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   base: '/live-translate/',
   plugins: [react(), tailwindcss()],
+  build: { rollupOptions: { input: { main: 'index.html', obs: 'obs.html' } } }, // obs.html = OBS Browser Source
 })

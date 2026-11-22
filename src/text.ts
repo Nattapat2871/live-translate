@@ -2,42 +2,67 @@
 // Author / ผู้สร้าง: nattapat2871 (https://nattapat2871.me)
 
 export interface Lang {
-  speech: string // SpeechRecognition locale
-  code: string // translation code
-  name: string // native name
+  key: string // SpeechRecognition locale for sources, translation code for targets
+  code: string // Google Translate code
   short: string // board route code
-  chars?: boolean // written without spaces between words
+  chars: boolean // written without spaces between words
 }
 
-export const LANGS: Lang[] = [
-  { speech: 'en-US', code: 'en', name: 'English', short: 'EN' },
-  { speech: 'th-TH', code: 'th', name: 'ไทย', short: 'TH', chars: true },
-  { speech: 'ja-JP', code: 'ja', name: '日本語', short: 'JA', chars: true },
-  { speech: 'ko-KR', code: 'ko', name: '한국어', short: 'KO' },
-  { speech: 'zh-CN', code: 'zh-CN', name: '中文（简体）', short: 'ZH', chars: true },
-  { speech: 'zh-TW', code: 'zh-TW', name: '中文（繁體）', short: 'ZH', chars: true },
-  { speech: 'vi-VN', code: 'vi', name: 'Tiếng Việt', short: 'VI' },
-  { speech: 'id-ID', code: 'id', name: 'Bahasa Indonesia', short: 'ID' },
-  { speech: 'ms-MY', code: 'ms', name: 'Bahasa Melayu', short: 'MS' },
-  { speech: 'fil-PH', code: 'tl', name: 'Filipino', short: 'FIL' },
-  { speech: 'lo-LA', code: 'lo', name: 'ລາວ', short: 'LO', chars: true },
-  { speech: 'my-MM', code: 'my', name: 'မြန်မာ', short: 'MY', chars: true },
-  { speech: 'km-KH', code: 'km', name: 'ខ្មែរ', short: 'KM', chars: true },
-  { speech: 'hi-IN', code: 'hi', name: 'हिन्दी', short: 'HI' },
-  { speech: 'ru-RU', code: 'ru', name: 'Русский', short: 'RU' },
-  { speech: 'uk-UA', code: 'uk', name: 'Українська', short: 'UK' },
-  { speech: 'pl-PL', code: 'pl', name: 'Polski', short: 'PL' },
-  { speech: 'tr-TR', code: 'tr', name: 'Türkçe', short: 'TR' },
-  { speech: 'de-DE', code: 'de', name: 'Deutsch', short: 'DE' },
-  { speech: 'fr-FR', code: 'fr', name: 'Français', short: 'FR' },
-  { speech: 'es-ES', code: 'es', name: 'Español', short: 'ES' },
-  { speech: 'pt-BR', code: 'pt', name: 'Português (BR)', short: 'PT' },
-  { speech: 'it-IT', code: 'it', name: 'Italiano', short: 'IT' },
-  { speech: 'ar-SA', code: 'ar', name: 'العربية', short: 'AR' },
-]
+// Locales Chrome's speech recognition accepts; the first locale of a language is the one a swap picks.
+const SPEECH =
+  'en-US en-GB en-AU en-CA en-IN en-NZ en-PH en-SG en-ZA th-TH ja-JP ko-KR zh-CN zh-TW yue-Hant-HK vi-VN id-ID ms-MY fil-PH lo-LA my-MM km-KH ' +
+  'hi-IN bn-BD bn-IN ta-IN ta-LK te-IN kn-IN ml-IN mr-IN gu-IN pa-Guru-IN ur-PK ur-IN ne-NP si-LK jv-ID su-ID ' +
+  'es-ES es-MX es-US es-AR es-CO es-CL es-PE pt-BR pt-PT fr-FR fr-CA fr-BE fr-CH de-DE de-AT de-CH it-IT nl-NL nl-BE ' +
+  'ru-RU uk-UA pl-PL cs-CZ sk-SK hu-HU ro-RO bg-BG hr-HR sr-RS sl-SI bs-BA mk-MK sq-AL el-GR tr-TR az-AZ ka-GE hy-AM kk-KZ uz-UZ mn-MN ' +
+  'sv-SE nb-NO da-DK fi-FI is-IS et-EE lv-LV lt-LT ca-ES eu-ES gl-ES cy-GB ar-SA ar-EG ar-AE fa-IR he-IL ' +
+  'af-ZA zu-ZA sw-KE sw-TZ am-ET'
 
-export const langBySpeech = (speech: string) => LANGS.find(l => l.speech === speech) ?? LANGS[0]
-export const langByCode = (code: string) => LANGS.find(l => l.code === code) ?? LANGS[1]
+// Every code Google's free endpoint translates into (each probed against it, Nov 2026).
+const TARGET =
+  'th en zh-CN zh-TW yue ja ko vi id ms tl lo my km hi bn ta te kn ml mr gu pa ur ne si jv su es pt pt-PT fr fr-CA de it nl ' +
+  'ru uk pl cs sk hu ro bg hr sr sl bs mk sq el tr az ka hy kk uz mn sv no da fi is et lv lt ca eu gl cy ar fa he af zu sw am ' +
+  'as ay bm be bho ceb ny co dv doi eo ee fy gn ht ha haw hmn ig ilo ga gom rw kri ku ckb ky la ln lg lb mai mg mt mi mni-Mtei lus or om ps ' +
+  'qu sm sa gd nso st sn sd so tg tt ti ts tk ak ug xh yi yo ab ace ach alz ba ban bbc bci bik br bts btx bua cgg chm cnh crh cv din dov dz ' +
+  'fa-AF fj fo fon ff fur gaa hil hrx iba jam kac ktu kg kek lij li lmo ltg luo mad mak ms-Arab mwr min nr new nus oc os pag pam pap pa-Arab ' +
+  'rom rn sah sat sg shn scn szl bo tet tiv tpi to tn tum ty udm ve vec war wo yua zap'
+
+const NO_SPACES = new Set(['th', 'ja', 'zh', 'yue', 'lo', 'my', 'km', 'bo', 'dz'])
+const SPEECH_CODE: Record<string, string> = { 'zh-CN': 'zh-CN', 'zh-TW': 'zh-TW', 'yue-Hant-HK': 'yue', 'fil-PH': 'tl', 'nb-NO': 'no', 'pt-PT': 'pt-PT', 'fr-CA': 'fr-CA' }
+const base = (code: string) => code.split('-')[0]
+const make = (key: string, code: string): Lang => ({ key, code, short: base(code).toUpperCase(), chars: NO_SPACES.has(base(code)) })
+
+export const SOURCES: Lang[] = SPEECH.split(' ').map(s => make(s, SPEECH_CODE[s] ?? base(s)))
+export const TARGETS: Lang[] = TARGET.split(' ').map(c => make(c, c))
+
+export const langBySpeech = (speech: string) => SOURCES.find(l => l.key === speech) ?? SOURCES[0]
+export const langByCode = (code: string) => TARGETS.find(l => l.key === code) ?? TARGETS[0]
+
+/** The speech locale to listen in when a target becomes the source, or undefined when it cannot be recognised. */
+export const speechFor = (code: string) => SOURCES.find(l => l.code === code) ?? SOURCES.find(l => base(l.code) === base(code))
+/** Translation target matching a source language. */
+export const targetFor = (src: Lang) => TARGETS.find(l => l.code === src.code) ?? TARGETS.find(l => base(l.code) === base(src.code)) ?? TARGETS[0]
+
+const names = new Map<string, Intl.DisplayNames>()
+const display = (locale: string, id: string) => {
+  try {
+    let d = names.get(locale)
+    if (!d) names.set(locale, (d = new Intl.DisplayNames([locale], { type: 'language', fallback: 'none' })))
+    return d.of(id)
+  } catch {
+    return undefined
+  }
+}
+/** Name in the language itself ("日本語") and in the interface language ("ญี่ปุ่น"); browsers supply both. */
+// Languages browsers have no name for yet.
+const EXTRA: Record<string, string> = {
+  alz: 'Alur', bci: 'Baoulé', bts: 'Batak Simalungun', btx: 'Batak Karo', cnh: 'Hakha Chin',
+  dov: 'Dombe', hrx: 'Hunsrik', ktu: 'Kituba', kek: 'Qʼeqchiʼ', yua: 'Yucatec Maya',
+}
+export function langNames(l: Lang, ui: string) {
+  const local = display(ui, l.key) ?? display(ui, l.code) ?? EXTRA[l.code] ?? l.code
+  const native = display(l.key, l.key) ?? display(l.code, l.code) ?? local
+  return { native, local }
+}
 
 const th = {
   tagline: 'ซับแปลเสียงเพื่อนต่างชาติ',
@@ -110,6 +135,34 @@ const th = {
   clear: 'ล้างบอร์ด',
   save: 'บันทึกเป็น .txt',
   limits: 'ข้อจำกัด: ถ้าหลายคนพูดพร้อมกัน ระบบแยกเสียงแต่ละคนไม่ได้ ข้อความอาจปนกัน และเกมแบบ Fullscreen จะบังซับลอย',
+  swap: 'สลับภาษา',
+  swapNo: 'สลับไม่ได้ เพราะภาษาปลายทางนี้ถอดเสียงไม่ได้',
+  langSearch: 'พิมพ์เพื่อค้นหา',
+  langNone: 'ไม่พบภาษานี้',
+  github: 'ซอร์สโค้ดบน GitHub',
+  donate: 'โดเนท',
+  donateHint: 'เปิดหน้าชำระเงินของ NamPayments ในแท็บใหม่ บิลถูกสร้างและตรวจที่ NamPayments เว็บนี้ไม่เห็นข้อมูลการจ่ายเงินของคุณ',
+  obs: 'OBS (ซับในสตรีม)',
+  obsSteps: [
+    'ใน OBS ไปที่ Tools → WebSocket Server Settings ติ๊ก Enable WebSocket server แล้วกด Show Connect Info เพื่อดูพอร์ตและรหัสผ่าน',
+    'ใส่พอร์ตและรหัสผ่านด้านล่าง แล้วเปิด “ส่งซับไป OBS” ถ้า Chrome ถามสิทธิ์เข้าถึงอุปกรณ์ในเครือข่าย ให้กดอนุญาต',
+    'กด “คัดลอก URL” แล้วใน OBS เพิ่ม Source แบบ Browser วาง URL ตั้งกว้าง 1920 สูง 400 วางไว้ด้านล่างของจอ',
+  ],
+  obsEnable: 'ส่งซับไป OBS',
+  obsPort: 'พอร์ต',
+  obsPassword: 'รหัสผ่าน WebSocket ของ OBS',
+  obsLines: 'จำนวนบรรทัด',
+  obsSize: 'ขนาดซับใน OBS',
+  obsCopy: 'คัดลอก URL',
+  obsCopied: 'คัดลอก URL ของ Browser Source แล้ว',
+  obsNote: 'รหัสผ่านอยู่ในเครื่องคุณเท่านั้น คือในเบราว์เซอร์นี้และใน URL ของ Browser Source ใน OBS อย่าแชร์ URL นั้นให้ใคร',
+  obsState: {
+    off: 'ปิดอยู่',
+    connecting: 'กำลังเชื่อมต่อ OBS…',
+    on: 'เชื่อมต่อ OBS แล้ว',
+    auth: 'รหัสผ่านไม่ถูกต้อง',
+    error: 'ต่อ OBS ไม่ได้ เปิด OBS และ WebSocket server แล้วหรือยัง (จะลองใหม่ให้)',
+  },
   // errors
   err: {
     cancelled: 'ยกเลิกการแชร์ กด “เริ่มฟัง” อีกครั้งเมื่อพร้อม',
@@ -200,6 +253,34 @@ const en: Strings = {
   showSrc: 'Show the original under each translation',
   clear: 'Clear board',
   save: 'Save as .txt',
+  swap: 'Swap languages',
+  swapNo: 'Cannot swap: this target language cannot be transcribed',
+  langSearch: 'Type to search',
+  langNone: 'No such language',
+  github: 'Source code on GitHub',
+  donate: 'Donate',
+  donateHint: 'Opens the NamPayments checkout in a new tab. NamPayments creates and checks the bill; this site never sees your payment details.',
+  obs: 'OBS (stream subtitles)',
+  obsSteps: [
+    'In OBS open Tools → WebSocket Server Settings, tick Enable WebSocket server, then Show Connect Info for the port and password.',
+    'Enter the port and password below and turn on “Send to OBS”. If Chrome asks to access devices on your local network, allow it.',
+    'Press “Copy URL”, then in OBS add a Browser source, paste the URL, set width 1920 and height 400, and place it at the bottom.',
+  ],
+  obsEnable: 'Send to OBS',
+  obsPort: 'Port',
+  obsPassword: 'OBS WebSocket password',
+  obsLines: 'Lines',
+  obsSize: 'OBS subtitle size',
+  obsCopy: 'Copy URL',
+  obsCopied: 'Browser Source URL copied',
+  obsNote: 'The password stays on your PC: in this browser and in the Browser Source URL inside OBS. Do not share that URL.',
+  obsState: {
+    off: 'Off',
+    connecting: 'Connecting to OBS…',
+    on: 'Connected to OBS',
+    auth: 'Wrong password',
+    error: 'Cannot reach OBS. Is OBS open with the WebSocket server on? Retrying.',
+  },
   limits: 'Limits: overlapping voices cannot be separated and may merge into one line; exclusive-fullscreen games cover the overlay.',
   err: {
     cancelled: 'Sharing was cancelled. Press Start again when ready.',
