@@ -12,7 +12,7 @@ import App from './App'
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <HeroUIProvider>
-      <ToastProvider placement="bottom-right" toastOffset={16} />
+      <ToastProvider placement="bottom-right" toastOffset={64} /* clears the page stats chip */ />
       <App />
     </HeroUIProvider>
   </StrictMode>,

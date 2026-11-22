@@ -42,6 +42,36 @@ export const speechFor = (code: string) => SOURCES.find(l => l.code === code) ??
 /** Translation target matching a source language. */
 export const targetFor = (src: Lang) => TARGETS.find(l => l.code === src.code) ?? TARGETS.find(l => base(l.code) === base(src.code)) ?? TARGETS[0]
 
+// Google's detector still answers with a few legacy codes; Cantonese is compared as Chinese.
+const ALIAS: Record<string, string> = { iw: 'he', jw: 'jv', fil: 'tl', nb: 'no', yue: 'zh' }
+/** Language a code compares as: zh-CN, zh-TW and yue are all zh. */
+export const langBase = (code: string) => {
+  const b = base(code).toLowerCase()
+  return ALIAS[b] ?? b
+}
+
+/**
+ * Whether a recognized line is in one of the `allowed` base languages. `detected` is Google's guess for the line alone.
+ * Scripts settle it where they are reliable: kana is Japanese, Hangul Korean, Thai script Thai, and 4+ kanji with no kana
+ * is Chinese (the Japanese recognizer writes Chinese speech as bare kanji).
+ */
+export function inAllowedLang(text: string, detected: string, allowed: string[]) {
+  const han = text.match(/\p{Script=Han}/gu)?.length ?? 0
+  const script = /[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)
+    ? 'ja'
+    : /\p{Script=Hangul}/u.test(text)
+      ? 'ko'
+      : /\p{Script=Thai}/u.test(text)
+        ? 'th'
+        : han >= 4
+          ? 'zh'
+          : undefined
+  const lang = script ?? (detected ? langBase(detected) : undefined)
+  if (!lang || allowed.includes(lang)) return true
+  // ponytail: too short to judge ("gg", "ok", 了解), so let it through rather than drop a real callout.
+  return !script && (text.match(/\p{L}/gu)?.length ?? 0) < 4
+}
+
 const names = new Map<string, Intl.DisplayNames>()
 const display = (locale: string, id: string) => {
   try {
@@ -134,6 +164,14 @@ const th = {
   showSrc: 'แสดงข้อความต้นฉบับใต้คำแปล',
   clear: 'ล้างบอร์ด',
   save: 'บันทึกเป็น .txt',
+  statsViews: 'ยอดเข้าชม',
+  statsLike: 'กดถูกใจเว็บนี้',
+  statsLiked: 'ถูกใจแล้ว ขอบคุณ',
+  langOnly: 'ฟังเฉพาะภาษาที่เลือก',
+  langOnlyTitle: 'ภาษาที่รับ',
+  langOnlyHint: 'ข้อความที่ไม่ใช่ภาษาที่เลือกจะถูกทิ้ง ไม่ขึ้นบอร์ด ซับลอย และ OBS เช่น ฟังเพื่อนญี่ปุ่นโดยตัดเสียงพากย์จีนในเกม ระบบถอดเสียงด้วยภาษา “เพื่อนพูด” เท่านั้น ภาษาเพิ่มเติมจึงถูกรับแต่ถอดได้แม่นน้อยกว่า',
+  langExtras: 'ภาษาเพิ่มเติมที่รับ',
+  langExtrasNone: 'ไม่มี (เฉพาะภาษาเพื่อนพูด)',
   limits: 'ข้อจำกัด: ถ้าหลายคนพูดพร้อมกัน ระบบแยกเสียงแต่ละคนไม่ได้ ข้อความอาจปนกัน และเกมแบบ Fullscreen จะบังซับลอย',
   swap: 'สลับภาษา',
   swapNo: 'สลับไม่ได้ เพราะภาษาปลายทางนี้ถอดเสียงไม่ได้',
@@ -312,6 +350,14 @@ const en: Strings = {
   deviceDefault: 'System default',
   deviceUnnamed: 'Device',
   deviceHint: 'Device names appear after you start once with the “Mic” source and allow access.',
+  statsViews: 'Views',
+  statsLike: 'Like this site',
+  statsLiked: 'Liked, thank you',
+  langOnly: 'Only languages I picked',
+  langOnlyTitle: 'Accepted languages',
+  langOnlyHint: 'Lines in other languages are dropped: not on the board, overlay or OBS. For example, follow a Japanese streamer and skip the Chinese game voices. Recognition listens in the “Friend speaks” language only, so extra languages are accepted but recognized less accurately.',
+  langExtras: 'Also accept',
+  langExtrasNone: 'None (friend’s language only)',
   limits: 'Limits: overlapping voices cannot be separated and may merge into one line; exclusive-fullscreen games cover the overlay.',
   err: {
     cancelled: 'Sharing was cancelled. Press Start again when ready.',

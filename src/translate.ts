@@ -1,6 +1,7 @@
 // Live Translate — translation engines
 // Author / ผู้สร้าง: nattapat2871 (https://nattapat2871.me)
 import type { Turn } from './pipeline'
+import { inAllowedLang, langBase } from './text'
 
 export type ErrorCode = 'auth' | 'rate' | 'network' | 'unsupported' | 'other'
 
@@ -19,6 +20,11 @@ const GOOGLE_TIMEOUT_MS = 8000
 // ---------- Google (free first pass) ----------
 // Unofficial endpoint with CORS *. ponytail: may rate-limit under heavy use; the pipeline retries with backoff and caps concurrency.
 export async function google(text: string, sl: string, tl: string, signal?: AbortSignal): Promise<string> {
+  return (await gtx(text, sl, tl, signal)).dst
+}
+
+/** `lang` is the source language Google used: its detection when `sl` is auto (response index 2, e.g. "ja", "zh-CN"). */
+async function gtx(text: string, sl: string, tl: string, signal?: AbortSignal): Promise<{ dst: string; lang: string }> {
   const url = `https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=${encodeURIComponent(sl)}&tl=${encodeURIComponent(tl)}&q=${encodeURIComponent(text)}`
   const timeout = AbortSignal.timeout(GOOGLE_TIMEOUT_MS)
   // A caller abort is a cancellation, passed through as is; our own timeout is a network failure.
@@ -32,8 +38,8 @@ export async function google(text: string, sl: string, tl: string, signal?: Abor
   if (res.status === 429) throw new TranslateError('google', 'rate')
   if (!res.ok) throw new TranslateError('google', 'other', `HTTP ${res.status}`)
   try {
-    const data = (await res.json()) as [[string, ...unknown[]][]]
-    return data[0].map(s => s[0]).join('')
+    const data = (await res.json()) as [[string, ...unknown[]][], unknown, unknown]
+    return { dst: data[0].map(s => s[0]).join(''), lang: typeof data[2] === 'string' ? data[2] : '' }
   } catch (e) {
     throw failure(e, 'other') // not JSON, or not the shape we expect
   }
@@ -52,6 +58,19 @@ export async function quickTranslate(text: string, prev: string | undefined, sl:
     if (line) return line
   }
   return google(text, sl, tl, signal)
+}
+
+/**
+ * Like quickTranslate, but returns null for a line that is not in one of the `allowed` base languages.
+ * Costs one extra request per line with context: the language is detected on the line alone, never with `prev` attached.
+ */
+export async function gatedTranslate(text: string, prev: string | undefined, sl: string, tl: string, allowed: string[], signal?: AbortSignal) {
+  const { dst, lang } = await gtx(text, 'auto', tl, signal)
+  if (!inAllowedLang(text, lang, allowed)) return null
+  if (!prev) return dst
+  const line = nthLine(await google(`${prev}
+${text}`, allowed.includes(langBase(lang)) ? lang : sl, tl, signal), 2)
+  return line ?? dst
 }
 
 // ---------- shared prompt for context-aware engines ----------

@@ -28,8 +28,9 @@ export interface Turn {
 }
 
 export interface PipelineDeps {
-  /** Fast first-pass translation. `prev` is the previous row's source text, for context. */
-  quick(text: string, prev: string | undefined, signal: AbortSignal): Promise<string>
+  /** Fast first-pass translation. `prev` is the previous row's source text, for context.
+   *  Null rejects the text (not a language the visitor listens to): its row is dropped and its live preview hidden. */
+  quick(text: string, prev: string | undefined, signal: AbortSignal): Promise<string | null>
   /** Optional context-aware refinement. Returns null to keep the quick translation. */
   refine?: ((text: string, history: Turn[]) => Promise<string | null>) | null
   onChange(rows: Row[], live: Live): void
@@ -94,6 +95,8 @@ export class Pipeline {
   private refineInFlight = 0
   private retries = new Map<number, number>() // row id -> rate-limit retries so far
   private retryTimers = new Set<ReturnType<typeof setTimeout>>()
+  private gate = false // text is shown only once quick() has accepted it
+  private liveOk = false // quick() accepted the current utterance's live text
   private snapshots = new WeakMap<Row, Row>() // unchanged rows keep their emitted object, so memoized views skip them
 
   constructor(deps: PipelineDeps) {
@@ -105,6 +108,12 @@ export class Pipeline {
   /** Languages without spaces between words (th, ja, zh, lo, my, km) are segmented by character. */
   setSegmentByChars(byChars: boolean) {
     this.byChars = byChars
+  }
+
+  /** Language gate on: hide rows and live text until quick() accepts them, so rejected text never flashes on screen. */
+  setGate(on: boolean) {
+    this.gate = on
+    this.emit()
   }
 
   setRefine(refine: PipelineDeps['refine']) {
@@ -192,18 +201,20 @@ export class Pipeline {
     this.committed = 0
     this.committedText = ''
     this.tailSince = 0
+    this.liveOk = false
     this.setLive('')
   }
 
   private emit() {
-    const rows = this.rows.map(r => {
+    const shown = this.gate ? this.rows.filter(r => r.status !== 'pending') : this.rows
+    const rows = shown.map(r => {
       const s = this.snapshots.get(r)
       if (s && s.src === r.src && s.dst === r.dst && s.status === r.status) return s
       const copy = { ...r }
       this.snapshots.set(r, copy)
       return copy
     })
-    this.deps.onChange(rows, { ...this.live })
+    this.deps.onChange(rows, this.gate && !this.liveOk ? { src: '', dst: '' } : { ...this.live })
   }
 
   /** Rate limited: committed rows keep the quota, live previews wait. */
@@ -259,7 +270,8 @@ export class Pipeline {
       .then(
         dst => {
           if (ctl !== this.liveCtl || !this.live.src) return // cancelled by a commit or the end of speech
-          this.live = { ...this.live, dst }
+          this.liveOk = dst !== null
+          this.live = { ...this.live, dst: dst ?? '' }
           this.emit()
         },
         e => {
@@ -295,6 +307,11 @@ export class Pipeline {
       withTimeout(this.deps.quick(row.src, prev, ctl.signal), LIMITS.quickTimeoutMs, () => ctl.abort())
         .then(dst => {
           this.retries.delete(row.id)
+          if (dst === null) {
+            const i = this.rows.indexOf(row)
+            if (i >= 0) this.rows.splice(i, 1) // rejected: never shown or refined, and no longer context for later rows
+            return
+          }
           row.dst = dst
           row.status = this.deps.refine ? 'refining' : 'done'
           if (this.deps.refine) this.enqueueRefine(row)

@@ -14,7 +14,7 @@ const sleep = (ms: number, signal?: AbortSignal) =>
     })
   })
 
-function setup(opts: { quickMs?: number | ((text: string) => number); refineMs?: number; refine?: boolean; failFirst?: 'rate' } = {}) {
+function setup(opts: { quickMs?: number | ((text: string) => number); refineMs?: number; refine?: boolean; failFirst?: 'rate'; reject?: (text: string) => boolean } = {}) {
   let rows: Row[] = []
   let live: Live = { src: '', dst: '' }
   const quickCalls: string[] = []
@@ -31,7 +31,7 @@ function setup(opts: { quickMs?: number | ((text: string) => number); refineMs?:
         failed = true
         throw Object.assign(new Error('rate'), { code: opts.failFirst })
       }
-      return `<${text}>`
+      return opts.reject?.(text) ? null : `<${text}>`
     },
     refine: opts.refine
       ? async text => {
@@ -223,6 +223,60 @@ describe('AI refinement under load', () => {
     s.p.setRefine(null)
     await vi.advanceTimersByTimeAsync(6000)
     expect(s.rows.some(r => r.status === 'refining')).toBe(false)
+  })
+})
+
+describe('language gate', () => {
+  const zh = (text: string) => text.startsWith('zh')
+
+  it('drops a rejected final row and never refines it, while accepted rows flow', async () => {
+    const s = setup({ refine: true, reject: zh })
+    s.p.setGate(true)
+    s.p.final('ja one')
+    s.p.final('zh noise')
+    s.p.final('ja two')
+    expect(s.rows).toHaveLength(0) // nothing shown before the translator rules on it
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(s.rows.map(r => r.src)).toEqual(['ja one', 'ja two'])
+    expect(s.rows.every(r => r.status === 'refined')).toBe(true)
+    expect(s.refineCalls).toEqual(['ja one', 'ja two'])
+  })
+
+  it('hides live text until it is accepted, and keeps hiding rejected live text', async () => {
+    const s = setup({ quickMs: 100, reject: zh })
+    s.p.setGate(true)
+    s.p.interim('zh hello')
+    expect(s.live.src).toBe('')
+    await vi.advanceTimersByTimeAsync(500)
+    expect(s.live).toEqual({ src: '', dst: '' })
+    s.p.final('zh hello')
+    s.p.interim('ja hi')
+    expect(s.live.src).toBe('') // a new utterance starts hidden again
+    await vi.advanceTimersByTimeAsync(500)
+    expect(s.live).toEqual({ src: 'ja hi', dst: '<ja hi>' })
+    expect(s.rows).toHaveLength(0)
+  })
+
+  it('takes context only from rows still on the board', async () => {
+    const prevs: (string | undefined)[] = []
+    let rows: Row[] = []
+    const p = new Pipeline({
+      clock: () => 'T',
+      quick: async (text, prev) => {
+        prevs.push(prev)
+        return text.startsWith('zh') ? null : text
+      },
+      onChange: r => (rows = r),
+    })
+    p.setGate(true)
+    p.final('ja one')
+    await vi.advanceTimersByTimeAsync(10)
+    p.final('zh noise')
+    await vi.advanceTimersByTimeAsync(10)
+    p.final('ja two')
+    await vi.advanceTimersByTimeAsync(10)
+    expect(rows.map(r => r.src)).toEqual(['ja one', 'ja two'])
+    expect(prevs).toEqual([undefined, 'ja one', 'ja one'])
   })
 })
 

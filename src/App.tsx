@@ -27,8 +27,9 @@ import { createPortal } from 'react-dom'
 import { Board, Meter, useOverlay } from './Board'
 import { Pipeline, type Live, type Row } from './pipeline'
 import { connectObs, obsSourceUrl, type ObsLink } from './obs'
-import { SOURCES, STRINGS, TARGETS, langByCode, langBySpeech, langNames, speechFor, targetFor, type Lang, type Strings, type UiLang } from './text'
-import { chromeAIPrepare, chromeAIRefiner, chromeAIStatus, claudeRefiner, isClaudeKey, quickTranslate, TranslateError, type ChromeAIState } from './translate'
+import { PageStats } from './PageStats'
+import { SOURCES, STRINGS, TARGETS, langBase, langByCode, langBySpeech, langNames, speechFor, targetFor, type Lang, type Strings, type UiLang } from './text'
+import { chromeAIPrepare, chromeAIRefiner, chromeAIStatus, claudeRefiner, gatedTranslate, isClaudeKey, quickTranslate, TranslateError, type ChromeAIState } from './translate'
 import { useSpeech, type Source } from './useSpeech'
 import { audioInputs } from './voice'
 
@@ -98,7 +99,19 @@ function LangSelect(p: { label: string; value: string; onChange(v: string): void
       label={p.label}
       labelPlacement="outside"
       placeholder={p.t.langSearch}
-      listboxProps={{ emptyContent: p.t.langNone }}
+      // Virtualized lists (over 50 items) give every item exactly itemHeight; two-line items need the room.
+      itemHeight={56}
+      maxListboxHeight={56 * 6}
+      popoverProps={{ classNames: { base: 'min-w-64' } }} // wider than the field, so long names are not cut short
+      listboxProps={{
+        emptyContent: p.t.langNone,
+        itemClasses: {
+          // Transparent borders inside the fixed slot leave a gap between highlighted items.
+          base: 'h-14 gap-3 rounded-md border-y-[3px] border-transparent bg-clip-padding px-3 py-0',
+          title: 'text-[14px] leading-tight',
+          description: 'mt-1 text-[12px] leading-tight text-ink-dim',
+        },
+      }}
       defaultItems={items}
       selectedKey={p.value}
       onSelectionChange={k => {
@@ -140,6 +153,8 @@ export default function App() {
   const [obsState, setObsState] = useState<ObsState>('off')
   const [noise, setNoise] = usePersisted('noise', { filter: true, ai: false })
   const [device, setDevice] = usePersisted('device', '')
+  const [langOnly, setLangOnly] = usePersisted('langOnly', true)
+  const [langExtras, setLangExtras] = usePersisted<string[]>('langExtras', [])
   const [devices, setDevices] = useState<{ id: string; label: string }[]>([])
   const obsLink = useRef<ObsLink | null>(null)
 
@@ -157,8 +172,18 @@ export default function App() {
   }
 
   // Latest values for callbacks that outlive a render.
-  const latest = useRef({ t, sl: fromLang.code, tl: toLang.code })
-  latest.current = { t, sl: fromLang.code, tl: toLang.code }
+  const allowed = [langBase(fromLang.code), ...langExtras]
+  const latest = useRef({ t, sl: fromLang.code, tl: toLang.code, langOnly, allowed })
+  latest.current = { t, sl: fromLang.code, tl: toLang.code, langOnly, allowed }
+  // One entry per base language for the "also accept" list.
+  const extraItems = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const l of SOURCES) {
+      const b = langBase(l.code)
+      if (!seen.has(b)) seen.set(b, langNames({ ...l, key: b, code: b }, ui).local)
+    }
+    return [...seen].map(([key, label]) => ({ key, label })).sort((a, b) => a.label.localeCompare(b.label, ui))
+  }, [ui])
 
   const lastToast = useRef(new Map<string, number>())
   const notify = (title: string, color: 'danger' | 'warning' | 'default' = 'danger') => {
@@ -186,7 +211,10 @@ export default function App() {
   const [pipeline] = useState(
     () =>
       new Pipeline({
-        quick: (text, prev, signal) => quickTranslate(text, prev, latest.current.sl, latest.current.tl, signal),
+        quick: (text, prev, signal) => {
+          const c = latest.current
+          return c.langOnly ? gatedTranslate(text, prev, c.sl, c.tl, c.allowed, signal) : quickTranslate(text, prev, c.sl, c.tl, signal)
+        },
         onChange: (r, l) => {
           setRows(r)
           setLive(l)
@@ -196,6 +224,7 @@ export default function App() {
   )
   useEffect(() => () => pipeline.dispose(), [pipeline])
   useEffect(() => pipeline.setSegmentByChars(!!fromLang.chars), [pipeline, fromLang])
+  useEffect(() => pipeline.setGate(langOnly), [pipeline, langOnly])
 
   // Which context-aware engine refines the quick translation.
   useEffect(() => {
@@ -407,7 +436,7 @@ export default function App() {
         <Board rows={rows} live={live} t={t} route={route} showSrc={showSrc} listening={speech.listening} />
       </main>
 
-      <footer className="mx-auto flex w-full max-w-[1400px] flex-wrap items-baseline justify-between gap-x-6 gap-y-2 px-5 pb-6 text-[13px] text-ink-dim">
+      <footer className="mx-auto flex w-full max-w-[1400px] flex-wrap items-baseline justify-between gap-x-6 gap-y-2 px-5 pb-20 text-[13px] text-ink-dim">
         <p className="max-w-[75ch]">{t.privacy}</p>
         <p>
           {t.author}{' '}
@@ -496,6 +525,28 @@ export default function App() {
                 </Select>
               </div>
             )}
+
+            <div className="flex flex-col gap-4">
+              <h3 className={SECTION}>{t.langOnlyTitle}</h3>
+              <Switch size="sm" isSelected={langOnly} onValueChange={setLangOnly}>
+                <span className="text-sm">{t.langOnly}</span>
+              </Switch>
+              <p className="-mt-2 ps-12 text-[13px] leading-snug text-ink-dim">{t.langOnlyHint}</p>
+              <Select
+                label={t.langExtras}
+                labelPlacement="outside"
+                placeholder={t.langExtrasNone}
+                radius="sm"
+                size="sm"
+                selectionMode="multiple"
+                isDisabled={!langOnly}
+                items={extraItems.filter(l => l.key !== langBase(fromLang.code))}
+                selectedKeys={langExtras}
+                onSelectionChange={keys => setLangExtras(keys === 'all' ? extraItems.map(l => l.key) : [...keys].map(String))}
+              >
+                {l => <SelectItem key={l.key}>{l.label}</SelectItem>}
+              </Select>
+            </div>
 
             <div className="flex flex-col gap-5">
               <h3 className={SECTION}>{t.display}</h3>
@@ -627,6 +678,8 @@ export default function App() {
           </DrawerBody>
         </DrawerContent>
       </Drawer>
+
+      <PageStats t={t} />
 
       {overlay.win &&
         createPortal(<Board compact rows={rows} live={live} t={t} route={route} showSrc={showSrc} listening={speech.listening} />, overlay.win.document.body)}
