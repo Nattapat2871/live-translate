@@ -47,6 +47,9 @@ export const Recognizer = (): RecognitionCtor | undefined =>
   (globalThis as { SpeechRecognition?: RecognitionCtor }).SpeechRecognition ??
   (globalThis as { webkitSpeechRecognition?: RecognitionCtor }).webkitSpeechRecognition
 
+/** Two result transcripts of a spaced language glued word-to-word need a space between them. */
+const needsSpace = (a: string, b: string) => /[\p{L}\p{N}]$/u.test(a) && /^[\p{L}\p{N}]/u.test(b) && !/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u.test(a.slice(-1) + b[0])
+
 const MAX_NETWORK_RETRIES = 6
 const QUICK_END_MS = 1000 // a session shorter than this did not really run (aborted, busy mic, ...)
 const MAX_QUICK_ENDS = 8 // that many in a row: give up instead of spinning
@@ -193,11 +196,15 @@ export class SpeechController {
     rec.interimResults = true
     rec.onresult = e => {
       this.netFails = 0
+      // Chrome splits a long utterance into several results and reports only the ones that changed (from
+      // resultIndex). The live text must be every result that is not final yet, or earlier words vanish.
       let interim = ''
-      for (let i = e.resultIndex; i < e.results.length; i++) {
+      for (let i = 0; i < e.results.length; i++) {
         const r = e.results[i]
-        if (r.isFinal) this.h.onFinal(r[0].transcript)
-        else interim += r[0].transcript
+        const text = r[0].transcript
+        if (r.isFinal) {
+          if (i >= e.resultIndex) this.h.onFinal(text) // earlier finals were delivered by earlier events
+        } else interim += needsSpace(interim, text) ? ` ${text}` : text
       }
       if (interim.trim()) this.h.onInterim(interim)
     }

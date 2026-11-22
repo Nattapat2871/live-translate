@@ -494,6 +494,27 @@ describe('SpeechController', () => {
     expect(states).toEqual([])
   })
 
+  it('keeps every unfinished result in the live text when Chrome reports only the newest one', async () => {
+    media(async () => streamOf(track()))
+    const onInterim = vi.fn()
+    const onFinal = vi.fn()
+    const c = new SpeechController({ ...handlers(), onInterim, onFinal }, Rec)
+    await c.start('mic')
+    const r = (isFinal: boolean, transcript: string) => ({ isFinal, 0: { transcript } })
+    const say = (resultIndex: number, ...results: ReturnType<typeof r>[]) => FakeRec.all[0].onresult!({ resultIndex, results })
+    say(0, r(false, 'where are you going'))
+    say(1, r(false, 'where are you going'), r(false, 'right now my friend')) // only the second result changed
+    expect(onInterim).toHaveBeenLastCalledWith('where are you going right now my friend')
+    say(1, r(true, 'where are you going'), r(false, 'right now'))
+    expect(onFinal).not.toHaveBeenCalled() // result 0 turned final but was not reported as changed
+    say(0, r(true, 'where are you going'), r(false, 'right now'))
+    expect(onFinal).toHaveBeenCalledWith('where are you going')
+    expect(onInterim).toHaveBeenLastCalledWith('right now')
+    say(1, r(false, '敵が'), r(false, '来た')) // no space inside Japanese
+    expect(onInterim).toHaveBeenLastCalledWith('敵が来た')
+    c.stop()
+  })
+
   it('keeps listening on the raw audio when the noise filter cannot start', async () => {
     media(async () => streamOf(track())) // no AudioContext in this environment, so cleanVoice fails
     const h = handlers()
