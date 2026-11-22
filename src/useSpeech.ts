@@ -1,9 +1,15 @@
 // Live Translate — audio capture + continuous speech recognition
 // Author / ผู้สร้าง: nattapat2871 (https://nattapat2871.me)
 import { useEffect, useRef, useState } from 'react'
+import { cleanVoice, type CleanVoice, type VoiceOptions } from './voice'
 
 export type Source = 'system' | 'mic'
-export type SpeechError = 'cancelled' | 'noAudio' | 'notAllowed' | 'network' | 'language' | 'browser'
+export type SpeechError = 'cancelled' | 'noAudio' | 'notAllowed' | 'network' | 'language' | 'browser' | 'filter'
+
+export interface StartOptions {
+  voice?: VoiceOptions // clean the audio before recognition (game noise)
+  deviceId?: string // mic source: a specific input, e.g. a virtual cable carrying only Discord
+}
 
 export interface SpeechHandlers {
   onInterim(text: string): void
@@ -53,7 +59,9 @@ export class SpeechController {
   private ctorOverride: RecognitionCtor | undefined
   private rec: Recognition | undefined
   private stream: MediaStream | undefined
-  private track: MediaStreamTrack | undefined
+  private track: MediaStreamTrack | undefined // what recognition listens to
+  private rawTrack: MediaStreamTrack | undefined // the capture itself
+  private clean: CleanVoice | undefined
   private source: Source = 'system'
   private active = false
   private netFails = 0
@@ -76,7 +84,7 @@ export class SpeechController {
     this.h = h
   }
 
-  async start(source: Source) {
+  async start(source: Source, opts: StartOptions = {}) {
     if (this.starting || this.active) return
     if (!this.ctor || !navigator.mediaDevices) return this.h.onError('browser')
     this.starting = true
@@ -91,7 +99,14 @@ export class SpeechController {
               systemAudio: 'include',
               selfBrowserSurface: 'exclude',
             } as DisplayMediaStreamOptions)
-          : await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+          : await navigator.mediaDevices.getUserMedia({
+              audio: {
+                ...(opts.deviceId ? { deviceId: { exact: opts.deviceId } } : {}),
+                echoCancellation: !opts.deviceId, // a chosen input is usually a cable carrying a voice chat, not a room mic
+                noiseSuppression: true, // Chrome's built-in suppressor (mic only)
+                autoGainControl: true,
+              },
+            })
     } catch (e) {
       if (gen !== this.gen) return // stopped meanwhile
       this.starting = false
@@ -99,24 +114,39 @@ export class SpeechController {
       return this.h.onError(name === 'NotAllowedError' ? (source === 'system' ? 'cancelled' : 'notAllowed') : 'browser')
     }
     if (gen !== this.gen) return stream.getTracks().forEach(t => t.stop()) // stopped while the picker was open
-    this.starting = false
     stream.getVideoTracks().forEach(t => t.stop()) // only the audio is used
     const track = stream.getAudioTracks()[0]
     if (!track) {
+      this.starting = false
       stream.getTracks().forEach(t => t.stop())
       return this.h.onError('noAudio')
     }
+    let clean: CleanVoice | undefined
+    if (opts.voice && (opts.voice.filter || opts.voice.ai)) {
+      try {
+        clean = await cleanVoice(track, opts.voice)
+      } catch {
+        this.h.onError('filter') // keep going with the raw audio
+      }
+      if (gen !== this.gen) {
+        clean?.close()
+        return stream.getTracks().forEach(t => t.stop())
+      }
+    }
+    this.starting = false
     track.onended = () => {
       if (!this.active) return
       this.stop()
       this.h.onEnded()
     }
     this.stream = stream
-    this.track = track
+    this.rawTrack = track
+    this.clean = clean
+    this.track = clean?.track ?? track
     this.source = source
     this.active = true
     this.netFails = this.quickEnds = 0
-    this.onState(true, stream)
+    this.onState(true, clean?.stream ?? stream) // the meter shows what recognition hears
     this.listen()
   }
 
@@ -128,12 +158,24 @@ export class SpeechController {
     const rec = this.rec
     this.rec = undefined
     rec?.abort()
+    this.clean?.close()
     this.stream?.getTracks().forEach(t => t.stop())
-    this.stream = this.track = undefined
+    this.stream = this.track = this.rawTrack = this.clean = undefined
     if (wasActive) {
       this.h.onFlush()
       this.onState(false, null)
     }
+  }
+
+  /** Falls back to the unprocessed capture; onend (or the next listen) picks it up. */
+  private dropFilter() {
+    this.clean?.close()
+    this.clean = undefined
+    this.track = this.rawTrack
+    this.h.onError('filter')
+    if (this.stream) this.onState(true, this.stream)
+    if (this.rec) this.rec.stop()
+    else this.listen()
   }
 
   /** Restart the session so a new language takes effect. */
@@ -162,6 +204,7 @@ export class SpeechController {
     rec.onerror = e => {
       if (e.error === 'no-speech' || e.error === 'aborted') return // normal pauses; onend restarts
       if (e.error === 'network' && ++this.netFails <= MAX_NETWORK_RETRIES) return // onend retries with backoff
+      if (e.error === 'audio-capture' && this.clean) return this.dropFilter() // recognition refused the processed track
       const map: Record<string, SpeechError> = {
         'not-allowed': 'notAllowed',
         'service-not-allowed': 'notAllowed',
@@ -190,6 +233,10 @@ export class SpeechController {
     try {
       rec.start(this.track) // Chrome accepts a MediaStreamTrack, so PC audio works like the mic
     } catch {
+      if (this.clean) {
+        this.rec = undefined // never started, so it will not end
+        return this.dropFilter()
+      }
       if (this.source !== 'mic') {
         this.stop()
         return this.h.onError('browser')
@@ -214,5 +261,5 @@ export function useSpeech(lang: string, handlers: SpeechHandlers) {
 
   useEffect(() => () => ctl.stop(), [ctl])
 
-  return { ...state, start: (s: Source) => ctl.start(s), stop: () => ctl.stop() }
+  return { ...state, start: (s: Source, opts?: StartOptions) => ctl.start(s, opts), stop: () => ctl.stop() }
 }

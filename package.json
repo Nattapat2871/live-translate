@@ -17,6 +17,7 @@
     "@fontsource-variable/anuphan": "^5.3.0",
     "@fontsource/barlow-condensed": "^5.3.0",
     "@heroui/react": "^2.8.10",
+    "@sapphi-red/web-noise-suppressor": "^0.4.2",
     "framer-motion": "^14.14.0",
     "lucide-react": "^1.77.0",
     "react": "^19.3.1",

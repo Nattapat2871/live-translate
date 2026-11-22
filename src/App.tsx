@@ -30,6 +30,7 @@ import { connectObs, obsSourceUrl, type ObsLink } from './obs'
 import { SOURCES, STRINGS, TARGETS, langByCode, langBySpeech, langNames, speechFor, targetFor, type Lang, type Strings, type UiLang } from './text'
 import { chromeAIPrepare, chromeAIRefiner, chromeAIStatus, claudeRefiner, isClaudeKey, quickTranslate, TranslateError, type ChromeAIState } from './translate'
 import { useSpeech, type Source } from './useSpeech'
+import { audioInputs } from './voice'
 
 type Engine = 'google' | 'chrome' | 'claude'
 const KEY_STORE = 'lt.anthropicKey'
@@ -137,6 +138,9 @@ export default function App() {
   const [progress, setProgress] = useState<number | null>(null)
   const [obs, setObs] = usePersisted('obs', { on: false, port: 4455, password: '', lines: 2, fs: 44 })
   const [obsState, setObsState] = useState<ObsState>('off')
+  const [noise, setNoise] = usePersisted('noise', { filter: true, ai: false })
+  const [device, setDevice] = usePersisted('device', '')
+  const [devices, setDevices] = useState<{ id: string; label: string }[]>([])
   const obsLink = useRef<ObsLink | null>(null)
 
   const fromLang = langBySpeech(from)
@@ -291,6 +295,15 @@ export default function App() {
     obsLink.current?.send({ app: 'live-translate', lines })
   }, [rows, live, obsState])
 
+  // Input list for the mic source; refreshed when settings open, devices change, or capture starts (labels need permission).
+  useEffect(() => {
+    if (!settingsOpen && !speech.listening) return
+    const refresh = () => void audioInputs().then(setDevices)
+    refresh()
+    navigator.mediaDevices?.addEventListener('devicechange', refresh)
+    return () => navigator.mediaDevices?.removeEventListener('devicechange', refresh)
+  }, [settingsOpen, speech.listening])
+
   const copyObsUrl = async () => {
     const url = obsSourceUrl(obs.port, obs.password, obs.lines, showSrc, obs.fs)
     try {
@@ -376,7 +389,7 @@ export default function App() {
             radius="sm"
             className="min-w-32 font-semibold"
             startContent={speech.listening ? <Square size={16} aria-hidden /> : <Play size={16} aria-hidden />}
-            onPress={() => (speech.listening ? speech.stop() : void speech.start(source))}
+            onPress={() => (speech.listening ? speech.stop() : void speech.start(source, { voice: noise, deviceId: source === 'mic' && device ? device : undefined }))}
           >
             {speech.listening ? t.stop : t.start}
           </Button>
@@ -508,6 +521,40 @@ export default function App() {
                   {t.save}
                 </Button>
               </div>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <h3 className={SECTION}>{t.noise}</h3>
+              <ol className="list-decimal space-y-1 ps-5 text-sm leading-relaxed text-ink-dim">
+                {t.noiseTips.map(line => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ol>
+              <Switch size="sm" isSelected={noise.filter} onValueChange={filter => setNoise(n => ({ ...n, filter }))}>
+                <span className="text-sm">{t.noiseFilter}</span>
+              </Switch>
+              <p className="-mt-2 ps-12 text-[13px] leading-snug text-ink-dim">{t.noiseFilterHint}</p>
+              <Switch size="sm" isSelected={noise.ai} onValueChange={ai => setNoise(n => ({ ...n, ai }))}>
+                <span className="text-sm">{t.noiseAi}</span>
+              </Switch>
+              <p className="-mt-2 ps-12 text-[13px] leading-snug text-ink-dim">{t.noiseAiHint}</p>
+              <p id="lt-device-label" className="-mb-2 text-sm">{t.device}</p>
+              <Select
+                aria-labelledby="lt-device-label"
+                radius="sm"
+                size="sm"
+                disallowEmptySelection
+                description={devices.some(d => d.label) ? undefined : t.deviceHint}
+                selectedKeys={[devices.some(d => d.id === device) ? device : '']}
+                onSelectionChange={keys => {
+                  const k = keys === 'all' ? undefined : [...keys][0]
+                  if (k !== undefined) setDevice(String(k))
+                }}
+                items={[{ id: '', label: t.deviceDefault }, ...devices.map((d, i) => ({ id: d.id, label: d.label || `${t.deviceUnnamed} ${i + 1}` }))]}
+              >
+                {d => <SelectItem key={d.id}>{d.label}</SelectItem>}
+              </Select>
+              <p className="text-[13px] leading-snug text-ink-dim">{t.noiseApply}</p>
             </div>
 
             <div className="flex flex-col gap-4">

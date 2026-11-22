@@ -448,4 +448,23 @@ describe('SpeechController', () => {
     expect(FakeRec.all).toHaveLength(0)
     expect(states).toEqual([])
   })
+
+  it('keeps listening on the raw audio when the noise filter cannot start', async () => {
+    media(async () => streamOf(track())) // no AudioContext in this environment, so cleanVoice fails
+    const h = handlers()
+    const c = new SpeechController(h, Rec)
+    await c.start('system', { voice: { filter: true, ai: false } })
+    expect(h.onError).toHaveBeenCalledWith('filter')
+    expect(FakeRec.all).toHaveLength(1)
+    c.stop()
+  })
+
+  it('passes the chosen input device to getUserMedia', async () => {
+    const gum = vi.fn(async (_c?: MediaStreamConstraints) => streamOf(track()))
+    media(gum)
+    const c = new SpeechController(handlers(), Rec)
+    await c.start('mic', { deviceId: 'cable-1' })
+    expect(gum.mock.calls[0][0]).toMatchObject({ audio: { deviceId: { exact: 'cable-1' }, echoCancellation: false } })
+    c.stop()
+  })
 })
