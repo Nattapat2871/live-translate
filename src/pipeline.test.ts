@@ -231,30 +231,22 @@ describe('language gate', () => {
 
   it('drops a rejected final row and never refines it, while accepted rows flow', async () => {
     const s = setup({ refine: true, reject: zh })
-    s.p.setGate(true)
     s.p.final('ja one')
     s.p.final('zh noise')
     s.p.final('ja two')
-    expect(s.rows).toHaveLength(0) // nothing shown before the translator rules on it
+    expect(s.rows.map(r => r.src)).toEqual(['ja one', 'zh noise', 'ja two']) // everything heard shows at once
     await vi.advanceTimersByTimeAsync(5000)
     expect(s.rows.map(r => r.src)).toEqual(['ja one', 'ja two'])
     expect(s.rows.every(r => r.status === 'refined')).toBe(true)
     expect(s.refineCalls).toEqual(['ja one', 'ja two'])
   })
 
-  it('hides live text until it is accepted, and keeps hiding rejected live text', async () => {
+  it('shows live text at once, before the language check answers', async () => {
     const s = setup({ quickMs: 100, reject: zh })
-    s.p.setGate(true)
-    s.p.interim('zh hello')
-    expect(s.live.src).toBe('')
-    await vi.advanceTimersByTimeAsync(500)
-    expect(s.live).toEqual({ src: '', dst: '' })
-    s.p.final('zh hello')
     s.p.interim('ja hi')
-    expect(s.live.src).toBe('') // a new utterance starts hidden again
+    expect(s.live.src).toBe('ja hi')
     await vi.advanceTimersByTimeAsync(500)
     expect(s.live).toEqual({ src: 'ja hi', dst: '<ja hi>' })
-    expect(s.rows).toHaveLength(0)
   })
 
   it('takes context only from rows still on the board', async () => {
@@ -268,7 +260,6 @@ describe('language gate', () => {
       },
       onChange: r => (rows = r),
     })
-    p.setGate(true)
     p.final('ja one')
     await vi.advanceTimersByTimeAsync(10)
     p.final('zh noise')

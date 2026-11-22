@@ -153,7 +153,7 @@ export default function App() {
   const [obsState, setObsState] = useState<ObsState>('off')
   const [noise, setNoise] = usePersisted('noise', { filter: true, ai: false })
   const [device, setDevice] = usePersisted('device', '')
-  const [langOnly, setLangOnly] = usePersisted('langOnly', true)
+  const [langOnly, setLangOnly] = usePersisted('langOnly2', false) // off by default: show everything heard at once (v2 key resets the old default)
   const [langExtras, setLangExtras] = usePersisted<string[]>('langExtras', [])
   const [devices, setDevices] = useState<{ id: string; label: string }[]>([])
   const obsLink = useRef<ObsLink | null>(null)
@@ -224,7 +224,6 @@ export default function App() {
   )
   useEffect(() => () => pipeline.dispose(), [pipeline])
   useEffect(() => pipeline.setSegmentByChars(!!fromLang.chars), [pipeline, fromLang])
-  useEffect(() => pipeline.setGate(langOnly), [pipeline, langOnly])
 
   // Which context-aware engine refines the quick translation.
   useEffect(() => {
