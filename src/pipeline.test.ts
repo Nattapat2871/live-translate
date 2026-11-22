@@ -541,6 +541,31 @@ describe('SpeechController', () => {
     c.stop()
   })
 
+  it('restarts a recognizer that goes quiet while speech is still coming in, keeping the live text', async () => {
+    media(async () => streamOf(track()))
+    const onFlush = vi.fn()
+    const c = new SpeechController({ ...handlers(), onFlush }, Rec)
+    await c.start('mic')
+    c.level = () => 0.05 // someone is talking
+    FakeRec.all[0].onresult!({ resultIndex: 0, results: [{ isFinal: false, 0: { transcript: 'มีใครมีกระสุน' } }] })
+    await vi.advanceTimersByTimeAsync(2500)
+    expect(FakeRec.all).toHaveLength(1) // still within the grace period
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(FakeRec.all).toHaveLength(2) // frozen session replaced
+    expect(onFlush).toHaveBeenCalled() // live text kept as a row
+    c.stop()
+  })
+
+  it('leaves a silent session alone', async () => {
+    media(async () => streamOf(track()))
+    const c = new SpeechController(handlers(), Rec)
+    await c.start('mic')
+    c.level = () => 0
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(FakeRec.all).toHaveLength(1)
+    c.stop()
+  })
+
   it('keeps listening on the raw audio when the noise filter cannot start', async () => {
     media(async () => streamOf(track())) // no AudioContext in this environment, so cleanVoice fails
     const h = handlers()

@@ -51,6 +51,8 @@ export const Recognizer = (): RecognitionCtor | undefined =>
 const needsSpace = (a: string, b: string) => /[\p{L}\p{N}]$/u.test(a) && /^[\p{L}\p{N}]/u.test(b) && !/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u.test(a.slice(-1) + b[0])
 
 const MAX_NETWORK_RETRIES = 6
+const STALL_MS = 3000 // speech is coming in but the recognizer has said nothing this long: it froze
+const SPEECH_RMS = 0.005 // about -46 dBFS: quiet voices still count as sound
 const QUICK_END_MS = 1000 // a session shorter than this did not really run (aborted, busy mic, ...)
 const MAX_QUICK_ENDS = 8 // that many in a row: give up instead of spinning
 
@@ -70,6 +72,12 @@ export class SpeechController {
   private netFails = 0
   private quickEnds = 0
   private sessionStart = 0
+  private lastHeard = 0 // last result from the recognizer
+  private loudAt = 0 // last time the audio was above SPEECH_RMS
+  private watchdog: ReturnType<typeof setInterval> | undefined
+  private meter: AudioContext | undefined
+  /** Current input level (RMS); set up from the captured track. Tests may replace it. */
+  level: (() => number) | undefined
   private starting = false
   private gen = 0 // bumped by stop(), so a start() still waiting for capture knows it was cancelled
   private retryTimer: ReturnType<typeof setTimeout> | undefined
@@ -150,6 +158,8 @@ export class SpeechController {
     this.active = true
     this.netFails = this.quickEnds = 0
     this.onState(true, clean?.stream ?? stream) // the meter shows what recognition hears
+    this.watchLevel(this.track)
+    this.watchdog = setInterval(() => this.checkStall(), 500)
     this.listen()
   }
 
@@ -158,6 +168,9 @@ export class SpeechController {
     this.active = this.starting = false
     this.gen++
     clearTimeout(this.retryTimer)
+    clearInterval(this.watchdog)
+    void this.meter?.close()
+    this.meter = this.level = undefined
     const rec = this.rec
     this.rec = undefined
     rec?.abort()
@@ -175,10 +188,45 @@ export class SpeechController {
     this.clean?.close()
     this.clean = undefined
     this.track = this.rawTrack
+    if (this.track) this.watchLevel(this.track)
     this.h.onError('filter')
     if (this.stream) this.onState(true, this.stream)
     if (this.rec) this.rec.stop()
     else this.listen()
+  }
+
+  /** Measures the audio recognition hears, so a frozen recognizer can be told apart from silence. */
+  private watchLevel(track: MediaStreamTrack) {
+    void this.meter?.close()
+    this.meter = undefined
+    if (typeof AudioContext === 'undefined') return
+    try {
+      const ctx = new AudioContext()
+      const an = ctx.createAnalyser()
+      an.fftSize = 1024
+      ctx.createMediaStreamSource(new MediaStream([track])).connect(an)
+      const buf = new Float32Array(an.fftSize)
+      this.meter = ctx
+      this.level = () => {
+        an.getFloatTimeDomainData(buf)
+        let sum = 0
+        for (const v of buf) sum += v * v
+        return Math.sqrt(sum / buf.length)
+      }
+    } catch {
+      // no meter: the watchdog stays idle
+    }
+  }
+
+  /** Chrome sometimes stops returning results mid-speech without ending the session. Restart it; onend keeps the live text. */
+  private checkStall() {
+    if (!this.active || !this.rec || !this.level) return
+    const now = Date.now()
+    if (this.level() > SPEECH_RMS) this.loudAt = now
+    if (now - this.lastHeard > STALL_MS && now - this.loudAt < 1000) {
+      this.lastHeard = now
+      this.rec.abort() // onend flushes and starts the next session at once
+    }
   }
 
   /** Restart the session so a new language takes effect. */
@@ -190,12 +238,13 @@ export class SpeechController {
     if (!this.active || !this.ctor) return
     const rec = new this.ctor()
     this.rec = rec
-    this.sessionStart = Date.now()
+    this.sessionStart = this.lastHeard = Date.now()
     rec.lang = this.lang
     rec.continuous = true
     rec.interimResults = true
     rec.onresult = e => {
       this.netFails = 0
+      this.lastHeard = Date.now()
       // Chrome splits a long utterance into several results and reports only the ones that changed (from
       // resultIndex). The live text must be every result that is not final yet, or earlier words vanish.
       let interim = ''
