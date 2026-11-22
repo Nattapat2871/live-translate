@@ -151,7 +151,7 @@ export default function App() {
   const [progress, setProgress] = useState<number | null>(null)
   const [obs, setObs] = usePersisted('obs', { on: false, port: 4455, password: '', lines: 2, fs: 44 })
   const [obsState, setObsState] = useState<ObsState>('off')
-  const [noise, setNoise] = usePersisted('noise', { filter: true, ai: false })
+  const [noise, setNoise] = usePersisted('noise2', { filter: false, ai: false }) // off: real-speech tests with game noise scored worse with it on (49% → 25% words)
   const [device, setDevice] = usePersisted('device', '')
   const [langOnly, setLangOnly] = usePersisted('langOnly2', false) // off by default: show everything heard at once (v2 key resets the old default)
   const [langExtras, setLangExtras] = usePersisted<string[]>('langExtras', [])

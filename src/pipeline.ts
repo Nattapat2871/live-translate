@@ -116,6 +116,19 @@ export class Pipeline {
   /** Full interim text of the utterance currently being recognized. */
   interim(text: string) {
     const toks = this.tokens(text)
+    // In noise the recognizer sometimes drops what it heard and starts over with different, shorter words.
+    // Never let words vanish: the abandoned live text becomes its own row first.
+    const shown = this.tokens(this.live.src)
+    const fresh = toks.slice(Math.min(this.committed, toks.length))
+    const head = (t: string[]) => this.join(t.slice(0, this.byChars ? 2 : 1))
+    const before = this.join([...this.tokens(this.committedText), ...shown]) // everything heard so far in this utterance
+    const trimmed = before.startsWith(this.join(toks)) // a brief shorter revision of the same words, not a new guess
+    if (shown.length && fresh.length < shown.length && head(fresh) !== head(shown) && !trimmed) {
+      this.cancelLive()
+      this.addRow(this.join(shown))
+      this.live = { src: '', dst: '' }
+      this.tailSince = 0
+    }
     this.committed = Math.min(this.committed, toks.length) // recognizer revised the text shorter
     let tail = toks.slice(this.committed)
     const now = this.now()

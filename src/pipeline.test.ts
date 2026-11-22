@@ -384,6 +384,17 @@ describe('live preview after a forced commit', () => {
     expect(s.rows.map(r => r.src).join(' ')).toBe(words(17)) // no duplicated w5..w13
   })
 
+  it('moves live words the recognizer abandoned in noise to their own row instead of dropping them', () => {
+    const s = setup()
+    s.p.interim('nice shot')
+    s.p.interim('now') // recognizer replaced its guess with different, shorter words
+    expect(s.rows.map(r => r.src)).toEqual(['nice shot'])
+    expect(s.live.src).toBe('now')
+    s.p.interim('now we rotate') // normal growth: no extra rows
+    s.p.final('now we rotate to A')
+    expect(s.rows.map(r => r.src)).toEqual(['nice shot', 'now we rotate to A'])
+  })
+
   it('re-emits unchanged rows as the same objects', async () => {
     const s = setup()
     s.p.final('a')
