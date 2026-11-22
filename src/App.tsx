@@ -36,7 +36,7 @@ const KEY_STORE = 'lt.anthropicKey'
 const REPO_URL = 'https://github.com/Nattapat2871/live-translate'
 // NamPayments hosted donate page (https://nampayments.nattapat2871.me/s/<slug>/<page>): the bill is made and checked there.
 // Empty = no donate button until the store page exists.
-const DONATE_URL = ''
+const DONATE_URL = 'https://nampayments.nattapat2871.me/s/nattapat2871'
 type ObsState = 'off' | 'connecting' | 'on' | 'auth' | 'error'
 
 function GithubMark() {
