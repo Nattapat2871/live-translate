@@ -384,6 +384,21 @@ describe('live preview after a forced commit', () => {
     expect(s.rows.map(r => r.src).join(' ')).toBe(words(17)) // no duplicated w5..w13
   })
 
+  it("cuts a forced row at the speaker's pause instead of mid-sentence", async () => {
+    const s = setup()
+    for (let n = 1; n <= 6; n++) {
+      s.p.interim(words(n))
+      await vi.advanceTimersByTimeAsync(100)
+    }
+    await vi.advanceTimersByTimeAsync(600) // the speaker pauses after w5
+    for (let n = 7; n <= 14; n++) {
+      s.p.interim(words(n))
+      await vi.advanceTimersByTimeAsync(100)
+    }
+    expect(s.rows.map(r => r.src)).toEqual([words(6)])
+    expect(s.live.src).toBe(words(14).split(' ').slice(6).join(' '))
+  })
+
   it('moves live words the recognizer abandoned in noise to their own row instead of dropping them', () => {
     const s = setup()
     s.p.interim('nice shot')

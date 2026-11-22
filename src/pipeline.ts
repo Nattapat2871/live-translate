@@ -45,6 +45,9 @@ export const LIMITS = {
   commitAgeMs: 4000, // …or once it has been growing this long
   keepWords: 2, // the newest words are still being revised by the recognizer, keep them live
   keepChars: 6,
+  pauseMs: 300, // a gap this long between words counts as a pause, the preferred place to cut a row
+  minChunkWords: 4, // a cut never leaves a row shorter than this
+  minChunkChars: 10,
   throttleMs: 400,
   quickConcurrency: 3,
   refineConcurrency: 2,
@@ -83,6 +86,7 @@ export class Pipeline {
   private committed = 0 // tokens of the current utterance already turned into rows
   private committedText = '' // the same, as text, to realign when the final rewrites earlier words
   private tailSince = 0
+  private seen: number[] = [] // time each word of the current utterance first appeared
   private liveTimer: ReturnType<typeof setTimeout> | undefined
   private lastLiveAt = -Infinity
   private livePausedUntil = 0
@@ -133,12 +137,14 @@ export class Pipeline {
     let tail = toks.slice(this.committed)
     const now = this.now()
     if (!this.tailSince) this.tailSince = now
+    this.seen.length = Math.min(this.seen.length, toks.length)
+    while (this.seen.length < toks.length) this.seen.push(now) // when each word first appeared
 
     const max = this.byChars ? LIMITS.commitChars : LIMITS.commitWords
     const keep = this.byChars ? LIMITS.keepChars : LIMITS.keepWords
     const old = now - this.tailSince >= LIMITS.commitAgeMs && tail.length > keep * 2
     if (tail.length >= max || old) {
-      const n = tail.length - keep
+      const n = this.splitAt(tail.length, keep)
       const chunk = this.join(tail.slice(0, n))
       this.cancelLive() // its text was just committed; the row gets its own translation
       this.live = { ...this.live, dst: '' } // the old preview covered the committed text too
@@ -202,7 +208,24 @@ export class Pipeline {
     this.retries.clear()
   }
 
+  /** Where to cut a forced row: at the speaker's longest pause, so rows end between phrases, not mid-sentence. */
+  private splitAt(tailLength: number, keep: number) {
+    const last = tailLength - keep
+    const first = Math.min(last, this.byChars ? LIMITS.minChunkChars : LIMITS.minChunkWords)
+    let at = last
+    let best = 0
+    for (let j = first; j <= last; j++) {
+      const gap = (this.seen[this.committed + j] ?? 0) - (this.seen[this.committed + j - 1] ?? 0)
+      if (gap >= best) {
+        best = gap // ties go to the later cut, which keeps rows long
+        at = j
+      }
+    }
+    return best >= LIMITS.pauseMs ? at : last // no real pause: cut just before the words still being revised
+  }
+
   private endUtterance() {
+    this.seen = []
     this.committed = 0
     this.committedText = ''
     this.tailSince = 0
